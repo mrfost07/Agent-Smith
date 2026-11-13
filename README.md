@@ -19,17 +19,7 @@
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    UI["Browser side panel"] <-->|Requests and progress| SW["Extension service worker"]
-    SW --> Engine["Agent engine"]
-    Engine <-->|Planning and answers| AI["Selected AI provider"]
-    Engine <-->|Page observations and DOM actions| Page["Content script in the active tab"]
-    Engine -->|Pointer and keyboard input| CDP["Chrome DevTools Protocol"]
-    CDP --> Page
-    Engine <-->|Conversation history| DB["IndexedDB"]
-    Engine -->|Optional| Bridge["Local resume bridge"]
-```
+![Agent Smith architecture. The browser side panel connects to the service worker and agent engine. The engine uses the selected AI provider, the active browser tab, IndexedDB, and an optional local resume bridge.](assets/architecture.png)
 
 The agent engine uses the request and conversation to choose between a direct answer and a browser task. For browser tasks, it reads page text and controls through the content script and can capture a screenshot when vision is enabled. It plans the next action with the selected model, runs the action after any required approval, and reads the page again to check the result.
 

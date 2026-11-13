@@ -1,5 +1,5 @@
-// Adapted for the visible chart's timeframe from the repository research in
-// docs/TRADING_SKILLS_SOL_HANDOFF.md (tradermonty/claude-trading-skills, technical-analyst).
+// Adapted for the visible chart's timeframe from the technical-analyst skill
+// in tradermonty/claude-trading-skills.
 export const browserTradingSkill = {
   tools: [
     'Trading skill for the active browser tab:',
