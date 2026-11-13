@@ -1,0 +1,10 @@
+node_modules/
+dist/
+_metadata/
+.codex/
+.smith.local.json
+.env
+.env.*
+*.log
+/resume.txt
+/tailored/

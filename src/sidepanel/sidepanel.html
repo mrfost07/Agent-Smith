@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Smith</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <!-- Living Background: HalftoneAurora WebGL Canvas -->
+  <canvas id="halftone-aurora-canvas" class="halftone-aurora-bg"></canvas>
+
+  <!-- Header: [History] [Session title (click to rename)] [New chat] [Menu] [Settings] -->
+  <header class="app-header">
+    <div class="header-left">
+      <button id="btn-open-history" class="icon-btn" title="Saved Sessions (Ctrl+K)">
+        <svg class="duotone-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="3" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+
+      <div class="session-title-cluster" id="session-title-cluster">
+        <span class="session-title-text" id="session-title-text" title="Click to rename session">New Session</span>
+        <input type="text" class="session-title-input" id="session-title-input" style="display: none;" spellcheck="false" />
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button id="btn-trading" class="icon-btn" type="button" title="Analyze the active chart" aria-label="Analyze the active chart">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <path d="M4 4v16h16M7 15l4-5 4 2 5-6"/>
+        </svg>
+      </button>
+      <button id="btn-new-chat" class="icon-btn" title="New Session (Ctrl+N)">
+        <svg class="duotone-icon" width="15" height="15" viewBox="0 0 24 24" fill="none">
+          <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+
+      <!-- Session Action Menu -->
+      <div class="menu-dropdown-wrapper">
+        <button id="btn-session-menu" class="icon-btn" title="Session Options">
+          <svg class="duotone-icon" width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+            <circle cx="19" cy="12" r="1.5" fill="currentColor"/>
+            <circle cx="5" cy="12" r="1.5" fill="currentColor"/>
+          </svg>
+        </button>
+        <div class="dropdown-menu" id="session-dropdown-menu" style="display: none;">
+          <button class="dropdown-item" id="menu-item-trading-tools" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <path d="M4 4v16h16M7 15l4-5 4 2 5-6"/>
+            </svg>
+            <span>Backtests and CSV</span>
+          </button>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item" id="menu-item-pin">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <line x1="12" y1="17" x2="12" y2="22"/>
+              <path d="M5 17h14l-2-7V4h1V2H6v2h1v6l-2 7z"/>
+            </svg>
+            <span id="pin-label">Pin session</span>
+          </button>
+          <button class="dropdown-item" id="menu-item-rename">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+            <span>Rename</span>
+          </button>
+          <button class="dropdown-item" id="menu-item-branch">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <line x1="6" y1="3" x2="6" y2="15"/>
+              <circle cx="18" cy="6" r="3"/>
+              <circle cx="6" cy="18" r="3"/>
+              <path d="M18 9a9 9 0 0 1-9 9"/>
+            </svg>
+            <span>Branch session</span>
+          </button>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item" id="menu-item-export-md">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>Export as Markdown</span>
+          </button>
+          <button class="dropdown-item" id="menu-item-export-json">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polyline points="16 18 22 12 16 6"/>
+              <polyline points="8 6 2 12 8 18"/>
+            </svg>
+            <span>Export as JSON</span>
+          </button>
+          <button class="dropdown-item" id="menu-item-copy-prompt">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span>Copy as prompt</span>
+          </button>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item" id="menu-item-del-screens">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <span>Delete screenshots</span>
+          </button>
+          <button class="dropdown-item danger" id="menu-item-delete">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            <span>Delete session</span>
+          </button>
+        </div>
+      </div>
+
+      <button id="btn-open-settings" class="icon-btn" title="Settings">
+        <svg class="duotone-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Live Status Banner (Quiet text line, no border) -->
+  <div class="session-status-banner" id="session-status-banner" style="display: none;">
+    <svg class="status-banner-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="8" x2="12" y2="12"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+    <span class="status-banner-text" id="status-banner-text"></span>
+    <button class="status-banner-action" id="status-banner-action" style="display: none;"></button>
+  </div>
+
+  <!-- Chat Container (Transparent, Typography on Living Aurora) -->
+  <main class="chat-container" id="chat-container">
+    <!-- Empty State: Typography + Original Brand Spark + Borderless Suggestion Rows -->
+    <div class="empty-state" id="empty-state">
+      <img class="empty-smith-logo" src="../icons/smithLogo.png" width="112" height="75" alt="Agent Smith">
+
+      <h1 class="empty-headline">How can I help on this page?</h1>
+      <p class="empty-subtext">Browse and automate with free models or your own AI provider.</p>
+    </div>
+
+    <!-- Active Conversation Feed (Borderless Typography Stream) -->
+    <div class="conversation-feed" id="conversation-feed" style="display: none;"></div>
+  </main>
+
+  <!-- Composer on the shared panel background -->
+  <footer class="composer-wrapper">
+    <div class="antigravity-composer-card">
+      <textarea 
+        id="prompt-input" 
+        class="antigravity-textarea" 
+        rows="1" 
+        placeholder="Ask anything about this page"
+      ></textarea>
+
+      <div class="antigravity-toolbar">
+        <div class="toolbar-left">
+          <div class="custom-model-dropdown" id="custom-model-dropdown">
+            <button type="button" class="model-pill-btn" id="model-pill-btn" title="Model Selector" aria-expanded="false" aria-controls="custom-model-menu">
+              <span id="model-pill-label">Choose model</span>
+              <svg class="chevron-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="custom-model-menu" id="custom-model-menu" style="display: none;">
+              <input id="model-search" class="provider-input" type="search" aria-label="Search provider models" placeholder="Search models">
+              <div id="model-menu-list" class="model-menu-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="toolbar-right">
+          <button id="toggle-turbo" class="toolbar-pill-btn" title="Execution Mode">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <span id="mode-text">Review</span>
+          </button>
+
+          <button id="btn-send" class="composer-submit-btn" title="Send (Enter)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 4 5 11l1.5 1.5 4.5-4.5V20h2V8l4.5 4.5L19 11z"/>
+            </svg>
+          </button>
+
+          <button id="btn-stop" class="composer-stop-btn" title="Stop agent execution (Esc)" style="display: none;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="5" width="14" height="14" rx="2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- History Drawer (Slides in from left) -->
+  <aside class="history-drawer" id="history-drawer">
+    <div class="history-header">
+      <div class="history-title-row">
+        <span class="history-title">Saved Sessions</span>
+        <span class="history-badge" id="history-total-count">0</span>
+      </div>
+      <button class="icon-btn" id="btn-close-history" title="Close (Esc)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Full-text Search -->
+    <div class="history-search-container">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" id="history-search-input" placeholder="Search sessions, domains... (Ctrl+K)" spellcheck="false" />
+    </div>
+
+    <!-- Filter Chips -->
+    <div class="history-filters">
+      <button class="filter-chip active" data-filter="all">All</button>
+      <button class="filter-chip" data-filter="running">Running</button>
+      <button class="filter-chip" data-filter="completed">Completed</button>
+      <button class="filter-chip" data-filter="failed">Failed</button>
+      <button class="filter-chip" data-filter="pinned">Pinned</button>
+      <button class="filter-chip" data-filter="archived">Archived</button>
+    </div>
+
+    <!-- Sessions Grouped List -->
+    <div class="history-list" id="history-list"></div>
+  </aside>
+  <div class="history-backdrop" id="history-backdrop"></div>
+
+  <!-- Screenshot Lightbox -->
+  <div class="screenshot-lightbox" id="screenshot-lightbox" style="display: none;">
+    <div class="lightbox-backdrop" id="lightbox-backdrop"></div>
+    <div class="lightbox-dialog">
+      <div class="lightbox-header">
+        <span class="lightbox-title" id="lightbox-step-label">Step Screenshot</span>
+        <div class="lightbox-controls">
+          <button class="lightbox-btn" id="lightbox-prev" title="Previous">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <span class="lightbox-counter" id="lightbox-counter">1 / 1</span>
+          <button class="lightbox-btn" id="lightbox-next" title="Next">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+          <button class="lightbox-btn close" id="lightbox-close" title="Close (Esc)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="lightbox-body">
+        <img id="lightbox-image" src="" alt="Screenshot" />
+      </div>
+      <div class="lightbox-footer">
+        <span class="lightbox-url" id="lightbox-url"></span>
+        <span class="lightbox-time" id="lightbox-time"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10-Second Undo Toast -->
+  <div class="undo-toast" id="undo-toast" style="display: none;">
+    <span class="undo-toast-text" id="undo-toast-text">Session deleted.</span>
+    <button class="btn-undo-action" id="btn-undo-action">Undo</button>
+  </div>
+
+  <!-- Settings Drawer -->
+  <aside class="settings-drawer" id="settings-drawer">
+    <div class="settings-header">
+      <span class="brand-title">Settings</span>
+      <button id="btn-close-settings" class="icon-btn" title="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="settings-body">
+      <div class="settings-group">
+        <label class="settings-label" for="settings-provider">AI provider</label>
+        <fieldset id="provider-fields" class="settings-card provider-fields">
+          <select id="settings-provider" class="provider-input">
+            <option value="antigravity">Antigravity</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="nvidia">NVIDIA NIM</option>
+            <option value="openai">OpenAI</option>
+            <option value="groq">Groq</option>
+            <option value="custom">Custom OpenAI-compatible API</option>
+            <option value="opencode">OpenCode</option>
+          </select>
+          <label id="provider-endpoint-field" hidden>API base URL
+            <input id="provider-endpoint" class="provider-input" type="url" spellcheck="false">
+          </label>
+          <label id="provider-key-field" hidden><span id="provider-key-label">API key</span>
+            <input id="provider-key" class="provider-input" type="password" autocomplete="off" spellcheck="false">
+          </label>
+          <details>
+            <summary>Local resume bridge</summary>
+            <label>Bridge token
+              <input id="bridge-token" class="provider-input" type="password" autocomplete="off" placeholder="Enter the bridge token">
+            </label>
+          </details>
+          <details id="opencode-help" hidden>
+            <summary>Connect OpenCode</summary>
+            <p>Start the local OpenCode server in PowerShell with a password you choose and the Agent Smith profile.</p>
+            <pre>$env:OPENCODE_SERVER_PASSWORD = 'your-password'
+$env:OPENCODE_CONFIG_CONTENT = '{"agent":{"agent-smith":{"description":"Browser planner","mode":"primary","permission":"deny"}}}'
+opencode serve --hostname 127.0.0.1 --port 4096</pre>
+            <p>Save the server address and password above, then select a browser sign-in method below. For providers that need additional setup, use <code>opencode auth login</code>.</p>
+          </details>
+          <div class="provider-actions">
+            <button id="provider-save" type="button" class="btn-secondary">Save and load models</button>
+            <button id="provider-clear" type="button" class="btn-secondary" hidden>Remove key</button>
+          </div>
+          <div id="opencode-sign-in" hidden>
+            <label>Browser sign-in
+              <select id="opencode-sign-in-method" class="provider-input" disabled></select>
+            </label>
+            <div class="provider-actions">
+              <button id="opencode-start-sign-in" class="btn-secondary" type="button" disabled>Open sign-in page</button>
+            </div>
+            <div id="opencode-sign-in-pending" hidden>
+              <p id="opencode-sign-in-instructions" class="provider-status"></p>
+              <label id="opencode-code-field" hidden>Authorization code
+                <input id="opencode-auth-code" class="provider-input" type="password" autocomplete="off" spellcheck="false">
+              </label>
+              <div class="provider-actions">
+                <button id="opencode-finish-sign-in" class="btn-secondary" type="button">Finish sign-in</button>
+                <button id="opencode-cancel-sign-in" class="btn-secondary" type="button">Cancel</button>
+              </div>
+            </div>
+          </div>
+          <label>Model
+            <select id="settings-model-select" class="provider-input" disabled></select>
+          </label>
+          <form id="provider-manual" class="provider-actions" hidden>
+            <input id="provider-model-id" class="provider-input" aria-label="Manual model ID" placeholder="Enter model ID" spellcheck="false" required>
+            <button class="btn-secondary" type="submit">Use model</button>
+          </form>
+          <label id="provider-vision-field" hidden>
+            <input id="provider-vision" type="checkbox"> Send screenshots to this model
+          </label>
+          <p id="provider-status" class="provider-status" role="status" aria-live="polite"></p>
+        </fieldset>
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">Agent</label>
+        <div class="settings-card">
+          <div class="settings-row">
+            <span style="font-weight: 500;">Agent Smith</span>
+            <span id="active-provider-label" class="status-subtext"></span>
+          </div>
+          <p style="font-size: 11.5px; color: var(--text-muted); line-height: 1.4;">
+            Browse and automate with your chosen AI model. Free models are available on supported providers.
+          </p>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label">Storage and Retention</label>
+        <div class="settings-card">
+          <div class="settings-row">
+            <span style="font-size: 12px;">Keep Sessions</span>
+            <select id="settings-retention" class="antigravity-pill-select" style="font-size: 11.5px;">
+              <option value="90">90 days (default)</option>
+              <option value="30">30 days</option>
+              <option value="0">Forever</option>
+            </select>
+          </div>
+          <div class="settings-row" style="margin-top: 10px;">
+            <label for="settings-send-screenshots" style="font-size: 12px;">Send page screenshots to the selected AI model</label>
+            <input type="checkbox" id="settings-send-screenshots" />
+          </div>
+          <div class="storage-meter-row" style="margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);">
+              <span>IndexedDB Quota</span>
+              <span id="storage-usage-text">0 MB / 0 MB (0%)</span>
+            </div>
+            <div class="storage-progress-bar">
+              <div class="storage-progress-fill" id="storage-progress-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div style="margin-top: 10px;">
+            <button id="btn-clear-all-sessions" class="btn-danger" style="width: 100%; font-size: 11.5px; padding: 5px 0;">Clear All Saved Data</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label">Antigravity account</label>
+        <div class="settings-card">
+          <div class="settings-row">
+            <span id="antigravity-account-status" style="font-size: 12.5px;"></span>
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 6px;">
+            <button id="btn-relogin" class="btn-secondary" style="flex: 1;">Reconnect</button>
+            <button id="btn-logout" class="btn-danger" style="flex: 1;">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Trading · Agent Smith</title>
+  <link rel="stylesheet" href="chart.css">
+  <script type="module" src="chart.js"></script>
+</head>
+<body>
+<main>
+  <header><img src="../icons/smithLogo.png" alt="" width="34" height="34"><h1>Trading</h1><span id="scope"></span></header>
+  <form id="market">
+    <label>Pair<input id="symbol" value="BTC/USD" required maxlength="25"></label>
+    <label>Timeframe<select id="interval"><option>15m</option><option selected>1h</option><option>4h</option><option>1d</option></select></label>
+    <label>Strategy<select id="strategy"><option value="breakout">Range breakout</option><option value="pullback">Trend pullback</option></select></label>
+    <button type="submit">Analyze Kraken</button>
+    <label class="file">Import historical CSV<input id="csv" type="file" accept=".csv,text/csv"></label>
+    <button id="stop" type="button" disabled>Stop</button>
+  </form>
+  <details>
+    <summary>Strategy and paper settings</summary>
+    <form id="settings">
+      <label>Lookback<input id="lookback" type="number" value="20" min="5" max="100" step="1" required></label>
+      <label>ATR stop multiple<input id="atr" type="number" value="2" min=".5" max="8" step="any" required></label>
+      <label>TP1 reward multiple<input id="reward" type="number" value="2" min="1" max="10" step="any" required></label>
+      <label class="check"><input id="volume" type="checkbox"> Confirm with volume</label>
+      <label>Paper balance (quote)<input id="equity" type="number" min=".01" step="any"></label>
+      <label>Balance currency<input id="currency" maxlength="12" placeholder="USD"></label>
+      <label>Risk %<input id="risk" type="number" min=".001" max="100" step="any"></label>
+      <label>Fees (bps/side)<input id="fee" type="number" value="25" min="0" max="500" step="any" required></label>
+      <label>Execution (bps/side)<input id="execution" type="number" value="10" min="0" max="500" step="any" required></label>
+      <button type="submit">Apply to loaded candles</button>
+    </form>
+    <div class="controls">
+      <label>CSV tick size<input id="tick" type="number" min="0" step="any"></label>
+      <label>CSV quantity step<input id="qty-step" type="number" min="0" step="any"></label>
+      <label>CSV min quantity<input id="qty-min" type="number" min="0" step="any"></label>
+      <label>CSV min notional<input id="notional" type="number" min="0" step="any"></label>
+      <label>CSV asset class<select id="asset"><option value="crypto">Crypto</option><option value="equity">Equity</option><option value="forex">Forex</option></select></label>
+    </div>
+    <p>CSV columns are time, open, high, low, close and optional volume. Use UTC candle opens. Set CSV order metadata for simulated sizing.</p>
+  </details>
+  <p id="status" role="status">Load a spot market or import historical candles.</p>
+  <section id="workspace" hidden>
+    <div class="controls" aria-label="Chart controls">
+      <button id="zoom-in">Zoom in</button><button id="zoom-out">Zoom out</button>
+      <button id="earlier">Earlier</button><button id="later">Later</button>
+      <button id="horizontal" aria-pressed="false">Price line</button>
+      <button id="trendline" aria-pressed="false">Trendline</button>
+      <button id="undo">Undo drawing</button>
+    </div>
+    <canvas id="chart" aria-label="Candlestick chart. Price levels and analysis are listed below."></canvas>
+    <details>
+      <summary>Drawing coordinates</summary>
+      <form id="drawing">
+        <label>Price<input id="price-a" type="number" min="0" step="any" required></label>
+        <label>Time (UTC ISO)<input id="time-a" placeholder="2026-01-01T12:00:00Z"></label>
+        <label>End price<input id="price-b" type="number" min="0" step="any"></label>
+        <label>End time (UTC ISO)<input id="time-b"></label>
+        <button type="submit">Add drawing</button>
+      </form>
+      <ul id="drawings"></ul>
+    </details>
+    <div id="analysis"></div>
+    <div class="controls">
+      <button id="paper">Save paper setup</button>
+      <button id="paper-update">Evaluate paper setup</button>
+      <button id="paper-cancel">Cancel pending setup</button>
+      <button id="backtest">Run backtest</button>
+      <button id="resume">Resume backtest</button>
+      <label class="check"><input id="holdout" type="checkbox"> Final 20% only</label>
+    </div>
+    <p id="paper-status"></p>
+    <section id="report" aria-label="Backtest report" hidden></section>
+  </section>
+</main>
+</body>
+</html>

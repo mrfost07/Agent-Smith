@@ -1,0 +1,98 @@
+[
+  {
+    "id": 1,
+    "priority": 10,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "user-agent",
+          "operation": "set",
+          "value": "antigravity/2.5.5 windows/amd64"
+        },
+        {
+          "header": "sec-ch-ua",
+          "operation": "remove"
+        },
+        {
+          "header": "sec-ch-ua-mobile",
+          "operation": "remove"
+        },
+        {
+          "header": "sec-ch-ua-platform",
+          "operation": "remove"
+        },
+        {
+          "header": "x-goog-api-client",
+          "operation": "set",
+          "value": "google-cloud-sdk vscode_cloudshelleditor/0.1"
+        },
+        {
+          "header": "client-metadata",
+          "operation": "set",
+          "value": "{\"ideType\":\"ANTIGRAVITY\",\"platform\":\"PLATFORM_UNSPECIFIED\",\"pluginType\":\"GEMINI\"}"
+        },
+        {
+          "header": "x-request-source",
+          "operation": "set",
+          "value": "local"
+        },
+        {
+          "header": "accept",
+          "operation": "set",
+          "value": "text/event-stream, application/json"
+        },
+        {
+          "header": "origin",
+          "operation": "remove"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||daily-cloudcode-pa.googleapis.com"
+    }
+  },
+  {
+    "id": 2,
+    "priority": 10,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "user-agent",
+          "operation": "set",
+          "value": "google-api-nodejs-client/9.15.1"
+        },
+        {
+          "header": "sec-ch-ua",
+          "operation": "remove"
+        },
+        {
+          "header": "sec-ch-ua-mobile",
+          "operation": "remove"
+        },
+        {
+          "header": "sec-ch-ua-platform",
+          "operation": "remove"
+        },
+        {
+          "header": "x-goog-api-client",
+          "operation": "set",
+          "value": "google-cloud-sdk vscode_cloudshelleditor/0.1"
+        },
+        {
+          "header": "client-metadata",
+          "operation": "set",
+          "value": "{\"ideType\":\"ANTIGRAVITY\",\"platform\":\"PLATFORM_UNSPECIFIED\",\"pluginType\":\"GEMINI\"}"
+        },
+        {
+          "header": "origin",
+          "operation": "remove"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||cloudcode-pa.googleapis.com"
+    }
+  }
+]

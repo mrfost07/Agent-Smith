@@ -1,0 +1,25 @@
+{
+  "name": "antigravity-browser-agent",
+  "version": "1.0.0",
+  "description": "Agent Smith reads web pages, answers questions, and automates browser tasks with your choice of free or paid AI models.",
+  "scripts": {
+    "build": "node build.js",
+    "lint": "node scripts/no-emoji.mjs && node scripts/no-surfaces.mjs",
+    "test": "node scripts/test-agent-core.mjs && node scripts/test-model-providers.mjs && node scripts/test-conversation.mjs && node scripts/test-run-lifecycle.mjs && node scripts/test-reply-animation.mjs && node scripts/test-trading.mjs && node scripts/test-terminal-dom.mjs && npm run lint",
+    "watch": "node build.js --watch",
+    "start:bridge": "node src/bridge/bridge-server.js"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.0.287",
+    "esbuild": "^0.25.0",
+    "linkedom": "^0.18.15",
+    "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "idb": "^8.0.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}
