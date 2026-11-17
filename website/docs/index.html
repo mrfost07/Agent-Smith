@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en" data-root="../" data-page="docs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Documentation — Agent Smith</title>
+  <meta name="description" content="Set up your model, run browser tasks, and see how the extension works.">
+  <meta name="theme-color" content="#080b13">
+  <link rel="canonical" href="https://mrfost07.github.io/Agent-Smith/docs/">
+  <link rel="icon" type="image/png" href="../assets/smith-icon.png">
+  <link rel="preload" href="../assets/fonts/Manrope.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="../assets/site.css">
+  <script src="../assets/site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a class="brand" href="../" aria-label="Agent Smith home"><img src="../assets/smith-icon.png" width="32" height="32" alt=""><span>Agent Smith</span></a>
+      <nav class="primary-nav" id="primary-nav" aria-label="Main navigation">
+        <a href="../#features">Features</a>
+        <a href="../download/">Download</a>
+        <a href="../docs/" aria-current="page">Docs</a>
+        <a class="github-link" href="https://github.com/mrfost07/Agent-Smith">GitHub</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="search-trigger" type="button" data-open-search aria-label="Search the site">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 5 5"/></svg>
+          <span>Search</span><kbd>Ctrl K</kbd>
+        </button>
+        <button class="icon-button mobile-menu" type="button" aria-label="Toggle navigation" aria-controls="primary-nav" aria-expanded="false">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+  <main id="main-content" class="container">
+    <div class="page-intro">
+      <h1>Documentation</h1>
+      <p>Set up your model, run browser tasks, and see how the extension works.</p>
+    </div>
+    <article class="prose guide-content">
+      <p><a href="#browser-tasks">Browser tasks</a> · <a href="#providers">AI providers</a> · <a href="#architecture">Architecture</a> · <a href="#page-data">Page data</a></p>
+      <h2 id="browser-tasks">Browser tasks</h2>
+      <p>Open a page and tell Smith what outcome you want. You can ask it to summarize the page, explain quiz choices, or complete a series of steps such as filling a form.</p>
+      <p>Review mode pauses before page input. Turbo runs routine actions automatically and asks for approval on recognized submissions. Agent Smith can also read visible charts and prepare ExpertOption demo orders for review.</p>
+      <h2 id="providers">AI providers</h2>
+      <p>Open <strong>Settings</strong>, select an AI provider, and enter its credentials if required. Choose <strong>Save and load models</strong>, then select a model. To use screenshots, pick a vision-capable model and enable <strong>Send page screenshots to the selected AI model</strong>.</p>
+      <p>For local OpenCode setup or Antigravity OAuth, use the <a href="https://github.com/mrfost07/Agent-Smith#ai-providers">provider instructions in the README</a>.</p>
+      <h2 id="architecture">Architecture</h2>
+      <img src="../assets/architecture.png" width="2120" height="748" alt="Side panel, service worker, agent engine, AI provider, active tab, and local storage architecture">
+      <p>The side panel passes requests to the extension service worker. The engine uses the selected model to plan actions, reads page context through the content script, and uses Chrome DevTools Protocol for pointer and keyboard input. Conversations are stored in IndexedDB.</p>
+      <h2 id="page-data">Page data</h2>
+      <p>For browser tasks, the selected provider can receive relevant page text and controls along with your request. If screenshots are enabled for a vision-capable model, the active page image can also be sent to that provider.</p>
+    </article>
+  </main>
+  <footer class="site-footer">
+    <div class="footer-main container">
+      <div><a class="brand" href="../"><img src="../assets/smith-icon.png" width="32" height="32" alt=""><span>Agent Smith</span></a><p>Your AI assistant inside the browser.</p></div>
+      <div class="footer-links">
+        <div><h2>Get started</h2><a href="../#features">Features</a><a href="../download/">Download</a></div>
+        <div><h2>Learn</h2><a href="../docs/" aria-current="page">Docs</a><a href="../docs/#architecture">Architecture</a></div>
+        <div><h2>Project</h2><a href="../changelog/">Changelog</a><a href="https://github.com/mrfost07/Agent-Smith">Source code</a><a href="https://github.com/mrfost07/Agent-Smith/issues">Issues</a></div>
+      </div>
+    </div>
+    <div class="footer-bottom container"><span>Maintained by <a href="https://github.com/mrfost07">mrfost07</a>.</span></div>
+  </footer>
+  <dialog class="search-dialog" aria-labelledby="search-title">
+    <div class="search-heading"><h2 id="search-title">Search Agent Smith</h2><form method="dialog"><button class="icon-button" aria-label="Close search">×</button></form></div>
+    <label class="search-field"><input id="site-search" type="search" placeholder="Features, install, providers…" aria-label="Search the site" autocomplete="off"></label>
+    <p class="search-status" role="status"></p>
+    <ul class="search-results" aria-label="Search results"></ul>
+  </dialog>
+</body>
+</html>

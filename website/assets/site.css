@@ -2181,6 +2181,9 @@ dialog::backdrop {
 }
 .feature-text-grid .text-link, .search-status, .quiet-link { font-size: 14px; }
 .search-results li a { display: block; }
+.primary-nav a[aria-current="page"] { color: var(--light); }
+.guide-content { max-width: 72ch; padding-bottom: 80px; }
+.guide-content .button.primary { color: var(--bg); text-decoration: none; }
 .platform-actions .button { justify-content: center; }
 .faq-list summary::after { content: "+"; color: var(--light); margin-left: auto; }
 .faq-list details[open] summary::after { content: "−"; }

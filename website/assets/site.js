@@ -18,11 +18,19 @@ const search = document.querySelector('.search-dialog');
 const field = document.querySelector('#site-search');
 const status = document.querySelector('.search-status');
 const results = document.querySelector('.search-results');
+const root = document.documentElement.dataset.root ?? './';
 const sections = [...document.querySelectorAll('[data-search-section]')].map(section => ({
-  id: section.id,
+  href: '#' + section.id,
   title: section.querySelector('h2').innerText,
   text: section.textContent.toLowerCase(),
 }));
+sections.push(
+  { href: root + 'download/', title: 'Download and install', text: 'download install source zip npm build chrome edge brave chromium unpacked' },
+  { href: root + 'docs/', title: 'Documentation', text: 'documentation browser tasks quiz automation trading setup privacy screenshot guide' },
+  { href: root + 'docs/#providers', title: 'AI providers', text: 'providers model settings api key opencode openrouter antigravity vision' },
+  { href: root + 'docs/#architecture', title: 'Architecture', text: 'architecture browser engine service worker permissions session storage' },
+  { href: root + 'changelog/', title: 'Changelog', text: 'changelog updates release notes history' },
+);
 
 function renderResults() {
   const words = field.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -31,7 +39,7 @@ function renderResults() {
   results.replaceChildren(...matches.map(section => {
     const item = document.createElement('li');
     const link = document.createElement('a');
-    link.href = '#' + section.id;
+    link.href = section.href;
     link.textContent = section.title;
     link.addEventListener('click', () => search.close());
     item.append(link);
@@ -62,12 +70,12 @@ document.addEventListener('keydown', event => {
 });
 
 const showcase = document.querySelector('.image-dialog');
-const showcaseImage = document.querySelector('[data-expand-image] img');
-document.querySelector('[data-expand-image]').addEventListener('click', () => {
-  showcase.querySelector('.image-scroll').replaceChildren(showcaseImage.cloneNode());
+document.querySelector('[data-expand-image]')?.addEventListener('click', event => {
+  const image = event.currentTarget.querySelector('img');
+  showcase.querySelector('.image-scroll').replaceChildren(image.cloneNode());
   showcase.showModal();
 });
-for (const dialog of [search, showcase]) {
+for (const dialog of document.querySelectorAll('dialog')) {
   dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
     const bounds = dialog.getBoundingClientRect();
