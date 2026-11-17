@@ -99,19 +99,9 @@ function registerContentScript(): void {
           break;
         }
 
-        case 'CHECK_ACTION_REVIEW': {
-          sendResponse({ required: sender.id !== chrome.runtime.id || ActionExecutor.requiresReview(request.action, request.observationId) });
-          break;
-        }
-
         case 'EXECUTE_ACTION': {
           if (isExpertOptionTerminal(location.href) && isTradingControlAction(request.action?.type)) {
-            sendResponse({ success: false, message: 'ExpertOption trade controls require the dedicated demo order review.' });
-            break;
-          }
-          if (request.checkReview && ['click', 'press_key'].includes(request.action?.type) &&
-              ActionExecutor.requiresReview(request.action, request.observationId)) {
-            sendResponse({ success: false, message: 'The action now requires review. Recheck the current target.' });
+            sendResponse({ success: false, message: 'ExpertOption trade controls require the dedicated demo order tool.' });
             break;
           }
           const result = await ActionExecutor.execute(request.action, request.observationId);
@@ -131,7 +121,7 @@ function registerContentScript(): void {
 
         case 'CHECK_CLICK_POINT': {
           const { x, y, observationId } = request;
-          sendResponse({ success: ActionExecutor.validateClickPoint({ x, y }, observationId, request.checkReview === true) });
+          sendResponse({ success: ActionExecutor.validateClickPoint({ x, y }, observationId) });
           break;
         }
 

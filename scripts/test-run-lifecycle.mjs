@@ -288,6 +288,7 @@ vm.runInContext(`
   const PANEL_SESSION_KEY = 'test-view';
   let activeSessionId = 'chess', activeSession, sessionViewRevision = 0;
   let currentRequestId = 'old', stopPending = Promise.resolve();
+  const executionModeReady = Promise.resolve();
   let currentProgressEl, currentConfirmationCardEl;
 ` + ts.transpileModule(handlers.map(node => node.getText(panelSource)).join('\n'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
@@ -300,6 +301,7 @@ assert.equal(panelUpdates.length, 0);
 stopAck.resolve({ success: true });
 await until(() => panelRequests.length === 2);
 assert.equal(panelRequests[1].requestId, 'request-1');
+assert.equal(panelRequests[1].safetyGate, false);
 panelListener({ type: 'AGENT_UPDATE', data: { requestId: 'request-1', status: 'running' } });
 assert.equal(panelUpdates.length, 1);
 startAck.resolve({ success: true, sessionId: 'chess' });
@@ -321,34 +323,22 @@ const { outputFiles: actionBundle } = await build({
   entryPoints: ['src/content/action-executor.ts'], bundle: true, format: 'iife',
   globalName: 'pageActions', write: false,
 });
-const form = {};
 class Control {
-  constructor(label, type, owner) {
-    this.textContent = label;
-    this.type = type;
-    this.form = owner;
-  }
-  closest(selector) { return selector === 'form' ? this.form : null; }
-  getAttribute() { return null; }
-  matches(selector) { return selector.startsWith('button,'); }
+  isConnected = true;
+  closest() { return null; }
   getRootNode() { return null; }
 }
-class Button extends Control {}
-class Input extends Control {}
-let hit = new Button('Continue', 'submit', form);
+let hit = new Control();
 const page = vm.createContext({
   window: { innerWidth: 800, innerHeight: 600 },
-  document: { elementFromPoint: () => hit, get activeElement() { return hit; } },
-  HTMLButtonElement: Button, HTMLInputElement: Input, ShadowRoot: class {},
+  document: { elementFromPoint: () => hit },
+  ShadowRoot: class {},
 });
 vm.runInContext(actionBundle[0].text, page);
 const { ActionExecutor } = page.pageActions;
-const click = { type: 'click', x: 20, y: 30 };
-assert.equal(ActionExecutor.requiresReview(click), true, 'Native submit works even with a generic label');
-hit = new Button('View details', 'button');
-assert.equal(ActionExecutor.requiresReview(click), false, 'Routine button click can run in Turbo');
-hit = new Button('Submit application', 'button');
-assert.equal(ActionExecutor.requiresReview(click), true, 'Recognizes a custom submit button by its label');
-hit = new Input('', 'text', form);
-assert.equal(ActionExecutor.requiresReview({ type: 'press_key', key: 'Enter' }), true);
-assert.equal(ActionExecutor.requiresReview({ type: 'press_key', key: 'ArrowDown' }), false);
+const point = { x: 20, y: 30 };
+assert.equal((await ActionExecutor.execute({ type: 'click', ...point, showCursor: false })).success, true);
+assert.equal(ActionExecutor.validateClickPoint(point), true);
+assert.equal(ActionExecutor.validateClickPoint(point, 'stale-observation'), false);
+hit = new Control();
+assert.equal(ActionExecutor.validateClickPoint(point), false, 'A different element under the pointer blocks the click');

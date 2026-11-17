@@ -30,34 +30,6 @@ export class ActionExecutor {
   private static clickTarget: Element | null = null;
   private static clickTargetIndex?: number;
 
-  static requiresReview(action: PageAction, observationId?: string): boolean {
-    if (!DOMObserver.isCurrentObservation(observationId)) return true;
-    const hasTarget = action.targetIndex !== undefined || Boolean(action.selector);
-    const target = hasTarget ? this.resolveTarget(action)
-      : action.type === 'press_key' ? document.activeElement
-      : this.isViewportPoint(action.x, action.y) ? this.hitAt({ x: action.x!, y: action.y! }) : null;
-    if (!target) return true;
-    if (action.type === 'press_key') {
-      const key = (action.key || 'Enter').toLowerCase();
-      if (!['enter', 'return', ' ', 'space', 'spacebar'].includes(key)) return false;
-      if ((key === 'enter' || key === 'return') && target.closest('form')) return true;
-    }
-    const consequential = /\b(?:submit|apply now|send|publish|post|place order|confirm|buy|purchase|pay|book|transfer|delete|remove|cancel subscription)\b/i;
-    // An omitted button type defaults to submit when the button belongs to a form.
-    for (let element: Element | null = target; element; ) {
-      if (element instanceof HTMLButtonElement && element.type === 'submit' && element.form) return true;
-      if (element instanceof HTMLInputElement && ['submit', 'image'].includes(element.type)) return true;
-      if (element.matches('button,input,[role="button"],a,[onclick],[tabindex]')) {
-        const label = [element.getAttribute('aria-label'), element.getAttribute('title'),
-          element instanceof HTMLInputElement ? element.value : element.textContent?.trim()].filter(Boolean).join(' ');
-        if (consequential.test(label)) return true;
-      }
-      const root = element.getRootNode();
-      element = element.assignedSlot ?? element.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
-    }
-    return false;
-  }
-
   static async execute(action: PageAction, observationId?: string): Promise<ActionExecutionResult> {
     if (!DOMObserver.isCurrentObservation(observationId)) {
       return { success: false, message: 'The page changed. Observe it again before acting.' };
@@ -128,12 +100,11 @@ export class ActionExecutor {
     }
   }
 
-  static validateClickPoint(point: Point, observationId?: string, checkReview = false): boolean {
+  static validateClickPoint(point: Point, observationId?: string): boolean {
     const target = this.clickTarget;
     if (this.clickTargetIndex !== undefined && DOMObserver.getObservedElement(this.clickTargetIndex) !== target) return false;
     return DOMObserver.isCurrentObservation(observationId) && Boolean(target && this.canInteract(target)
-      && this.isViewportPoint(point.x, point.y) && this.hitsTarget(point, target)
-      && (!checkReview || !this.requiresReview({ type: 'click', ...point }, observationId)));
+      && this.isViewportPoint(point.x, point.y) && this.hitsTarget(point, target));
   }
 
   static isViewportPoint(x: unknown, y: unknown): boolean {

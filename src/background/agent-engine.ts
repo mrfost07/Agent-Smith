@@ -564,6 +564,11 @@ export class AgentEngine {
       return;
     }
     this.activeTabId = tabId;
+    const pending = { order, url: tab.url, chartReply: chart?.reply };
+    if (!this.safetyGate) {
+      await this.submitPlatformDemoOrder(pending, tabId, runId);
+      return;
+    }
     const approvalPrompt = 'Submit one ExpertOption demo order? ' + demoOrderDescription(order) + '.';
     if (this.currentSessionId) {
       await SessionManager.getInstance().appendMessage(this.currentSessionId, {
@@ -573,7 +578,7 @@ export class AgentEngine {
       await SessionManager.getInstance().updateStatus(this.currentSessionId, 'awaiting_permission');
     }
     if (this.runId !== runId) return;
-    this.pendingDemoOrder = { order, url: tab.url, chartReply: chart?.reply };
+    this.pendingDemoOrder = pending;
     this.approvalId = crypto.randomUUID();
     this.approvalPrompt = approvalPrompt;
     this.status = 'waiting_confirmation';
@@ -988,9 +993,7 @@ export class AgentEngine {
       }
 
       // Check human confirmation requirement
-      const needsReview = await this.requiresApproval(modelPlan.action, tabId, observation, signal);
-      if (this.runId !== runId) return;
-      if (needsReview) {
+      if (this.requiresApproval(modelPlan.action)) {
         const host = new URL(pageState.url).hostname;
         const target = pageState.interactiveElements.find((element: { index: number }) => element.index === modelPlan.action.targetIndex);
         const label = target?.ariaLabel || target?.text;
@@ -1036,7 +1039,7 @@ export class AgentEngine {
       }).catch(() => {});
 
       const stepStart = Date.now();
-      const actionResult = await this.trackInput(modelPlan.action, runId, observation, !this.safetyGate);
+      const actionResult = await this.trackInput(modelPlan.action, runId, observation);
       if (this.runId !== runId) return;
       const stepDuration = Date.now() - stepStart;
 
@@ -1088,8 +1091,8 @@ export class AgentEngine {
     ).catch(() => {}));
   }
 
-  private async trackInput(action: AgentAction, runId: number, observation?: PageObservation, checkReview = false) {
-    const input = this.executeActionOnTarget(action, runId, observation, checkReview);
+  private async trackInput(action: AgentAction, runId: number, observation?: PageObservation) {
+    const input = this.executeActionOnTarget(action, runId, observation);
     this.activeInput = input;
     try { return await input; }
     finally { if (this.activeInput === input) this.activeInput = undefined; }
@@ -1118,7 +1121,6 @@ export class AgentEngine {
     action: AgentAction,
     runId: number,
     observation?: PageObservation,
-    checkReview = false,
   ): Promise<{ success: boolean; message: string }> {
     const activities: Record<string, string> = {
       navigate: 'Navigating…', click: 'Clicking…', type: 'Typing…',
@@ -1242,7 +1244,7 @@ export class AgentEngine {
       return { success: dragged, message: dragged ? 'Drag dispatched.' : 'Chrome could not dispatch the drag.' };
     }
 
-    const prepared = await sendToPage({ type: 'EXECUTE_ACTION', action, checkReview });
+    const prepared = await sendToPage({ type: 'EXECUTE_ACTION', action });
     if (!isCurrent()) return { success: false, message: 'The browser run stopped.' };
     if (!prepared) return { success: false, message: 'The page could not respond to this action.' };
     if (!prepared.success) return prepared;
@@ -1261,7 +1263,7 @@ export class AgentEngine {
       if (action.type === 'click') {
         const sent = await CDPController.click(tabId, x, y, async () => {
           if (!isCurrent()) return false;
-          const point = await sendToPage({ type: 'CHECK_CLICK_POINT', x, y, checkReview });
+          const point = await sendToPage({ type: 'CHECK_CLICK_POINT', x, y });
           return Boolean(point?.success) && isCurrent();
         });
         if (sent && isCurrent()) void sendToPage({ type: 'POINTER_FEEDBACK', x, y, click: true });
@@ -1279,14 +1281,9 @@ export class AgentEngine {
     return prepared;
   }
 
-  private async requiresApproval(action: AgentAction, tabId: number, observation: PageObservation, signal?: AbortSignal): Promise<boolean> {
-    if (action.type === 'upload_file' || action.type === 'tailor_resume') return true;
-    if (this.safetyGate) return ['click', 'drag', 'press_key', 'type', 'select'].includes(action.type);
-    if (action.type !== 'click' && action.type !== 'press_key') return false;
-    const result = await runOperation(() => chrome.tabs.sendMessage(tabId, {
-      type: 'CHECK_ACTION_REVIEW', action, observationId: observation.id,
-    }, { frameId: 0 }), 2500, 'Checking whether the action needs review', signal).catch(() => undefined);
-    return result?.required !== false;
+  private requiresApproval(action: AgentAction): boolean {
+    return this.safetyGate &&
+      ['click', 'drag', 'press_key', 'type', 'select', 'upload_file', 'tailor_resume'].includes(action.type);
   }
 
   private notifyUpdate(extra?: Partial<Parameters<NonNullable<AgentEngine['onUpdateCallback']>>[0]>) {

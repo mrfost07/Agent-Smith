@@ -13,9 +13,9 @@
 | --- | --- |
 | Browser browsing and research | Navigate websites, read open tabs, search the web, and summarize what it finds. |
 | Questions and quizzes | Answer questions in chat, read quiz prompts and options from the page, and explain its answers. |
-| Browser automation | Click controls, fill forms, and work through multi-step website tasks. Review mode pauses before page input. Turbo handles routine actions automatically and asks for approval on recognized submissions. |
+| Browser automation | Click controls, fill forms, and work through multi-step website tasks. Review pauses before page input. Turbo runs requested actions, including submissions, without an Agent Smith approval prompt. |
 | Resume tailoring | Generate and attach a tailored PDF through the optional local resume bridge. |
-| Trading | Analyze visible charts, backtest strategies, replay paper trades, and prepare ExpertOption demo orders for review. |
+| Trading | Analyze visible charts, backtest strategies, replay paper trades, and handle verified ExpertOption demo orders in Review or Turbo mode. |
 
 ## Architecture
 

@@ -74,7 +74,6 @@ globalThis.chrome = {
     },
     sendMessage: async (id, { type, state }) => {
       pageMessages.push({ id, type, state });
-      if (type === 'CHECK_ACTION_REVIEW') return { required: false };
       if (type !== 'GET_PAGE_STATE') return {};
       observations.push(id);
       return {
@@ -351,15 +350,33 @@ assert.equal(updates.length, updateCount);
 assert.equal(updates.at(-1).summary, 'Ready to play White on the current board.');
 assert.ok(!messages.get('chess').some(message => message.text === 'Old Black reply'));
 
-// Exercise one complete drag with fresh observations/screenshots before and after.
 const originalSend = chrome.tabs.sendMessage;
-chrome.tabs.sendMessage = async (id, message) => message.type === 'CHECK_ACTION_REVIEW'
-  ? { required: true }
-  : originalSend(id, message);
-responses.push(() => ({ action: { type: 'click', targetIndex: 0 } }));
-await agent.start('Click the submit button', 1, { sessionId: 'turbo-submit', safetyGate: false, visionEnabled: false });
-assert.equal(agent.getStatus().status, 'waiting_confirmation');
-agent.stop();
+const submitInput = [];
+chrome.debugger = {
+  attach: async () => {}, detach: async () => {}, onDetach: { addListener() {} },
+  sendCommand: async (_, method, params) => submitInput.push(params.type),
+};
+chrome.tabs.sendMessage = async (id, message) => {
+  assert.notEqual(message.type, 'CHECK_ACTION_REVIEW', 'Turbo must not request a separate review');
+  if (message.type === 'EXECUTE_ACTION') {
+    assert.equal(message.checkReview, undefined);
+    return { success: true, coords: { x: 120, y: 80 } };
+  }
+  if (message.type === 'CHECK_CLICK_POINT') return { success: true };
+  return originalSend(id, message);
+};
+for (const [goal, action, expected] of [
+  ['Click the submit button', { type: 'click', targetIndex: 0 }, ['mouseMoved', 'mousePressed', 'mouseReleased']],
+  ['Press Enter to submit the form', { type: 'press_key', key: 'Enter' }, ['keyDown', 'keyUp']],
+]) {
+  const sessionId = 'turbo-submit-' + action.type;
+  submitInput.length = 0;
+  responses.push(() => ({ action }), () => complete('Form submitted.'));
+  await agent.start(goal, 1, { sessionId, safetyGate: false, visionEnabled: false });
+  assert.equal(agent.getStatus().status, 'completed');
+  assert.ok(!messages.get(sessionId).some(message => message.kind === 'permission'));
+  assert.deepEqual(submitInput, expected);
+}
 chrome.tabs.sendMessage = originalSend;
 
 responses.push(() => ({ action: { type: 'extract' } }), ({ system }) => {
@@ -788,7 +805,7 @@ await startWithTool('prepare_trade', demoGoal, 1, { sessionId: 'chart-order', sa
 assert.match(updates.at(-1).summary, /No selected Demo account/);
 assert.equal(demoInput.length, 0);
 demoSelected = true;
-await startWithTool('prepare_trade', demoGoal, 1, { sessionId: 'chart-order', safetyGate: false },
+await startWithTool('prepare_trade', demoGoal, 1, { sessionId: 'chart-order', safetyGate: true },
   { direction: 'up', analyzeChart: false });
 assert.equal(agent.getStatus().status, 'waiting_confirmation');
 assert.match(agent.getStatus().summary, /Up on USD\/CHF \(OTC\) for \$1 with expiry 00:30/);
@@ -798,7 +815,7 @@ await agent.confirmPendingAction();
 assert.match(updates.at(-1).summary, /order details.*changed/);
 assert.equal(demoInput.length, 0);
 demoExpiry = '00:30';
-await startWithTool('prepare_trade', demoGoal, 1, { sessionId: 'chart-order', safetyGate: false },
+await startWithTool('prepare_trade', demoGoal, 1, { sessionId: 'chart-order', safetyGate: true },
   { direction: 'up', analyzeChart: false });
 await Promise.all([agent.confirmPendingAction(), agent.confirmPendingAction()]);
 assert.deepEqual(demoInput, ['mouseMoved', 'mousePressed', 'mouseReleased']);
@@ -809,9 +826,16 @@ assert.deepEqual(demoInput, ['mouseMoved', 'mousePressed', 'mouseReleased']);
 assert.equal(calls.length, beforeOrder + 4);
 assert.equal(responses.length, 0);
 
+demoInput.length = 0;
+await startWithTool('prepare_trade', demoGoal, 1, { sessionId: 'turbo-demo', safetyGate: false },
+  { direction: 'up', analyzeChart: false });
+assert.equal(agent.getStatus().status, 'completed');
+assert.ok(!messages.get('turbo-demo').some(message => message.kind === 'permission'));
+assert.deepEqual(demoInput, ['mouseMoved', 'mousePressed', 'mouseReleased']);
+
 const combinedGoal = 'analyze the current browser, and make me a trade, im on demo';
 const combinedOrder = (sessionId, visionEnabled = true) =>
-  startWithTool('prepare_trade', combinedGoal, 1, { sessionId, visionEnabled, safetyGate: false });
+  startWithTool('prepare_trade', combinedGoal, 1, { sessionId, visionEnabled, safetyGate: true });
 const directionReading = { ...chartReading, demoDirection: 'down' };
 demoInput.length = 0;
 const initialPrepares = demoPrepares;

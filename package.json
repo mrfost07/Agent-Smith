@@ -1,6 +1,6 @@
 {
   "name": "antigravity-browser-agent",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Agent Smith reads web pages, answers questions, and automates browser tasks with your choice of free or paid AI models.",
   "scripts": {
     "build": "node build.js",

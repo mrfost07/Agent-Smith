@@ -4,8 +4,8 @@ export const browserTradingSkill = {
   tools: [
     'Trading skill for the active browser tab:',
     'Choose by the requested outcome and evidence source. Use analyze_chart when the user wants a reading, forecast, or trade plan based on the page they have open. Use analyze_market for candle-based calculations from a named market or saved analysis, paper trading calculations, or a backtest. Use ordinary browser tools for navigation and unrelated page tasks. A general question about trading can be answered directly.',
-    'Use prepare_trade only when the user requests an actual order, including a follow-up referring to a prior chart. This prepares one demo order for review or explains why no order was prepared. For a user-specified direction use action.direction up or down. Set analyzeChart to false only when the user directly specifies the direction and requests an order without chart analysis.',
-    'Use the latest chart and the requested horizon, or the duration selected on the trading page when the user leaves the horizon open. Decide the direction if delegated. Reserve confirmation for a concrete order with its asset, direction, amount, and expiry.',
+    'Use prepare_trade only when the user requests an actual order, including a follow-up referring to a prior chart. The extension handles confirmation according to the selected execution mode. For a user-specified direction use action.direction up or down. Set analyzeChart to false only when the user directly specifies the direction and requests an order without chart analysis.',
+    'Use the latest chart and the requested horizon, or the duration selected on the trading page when the user leaves the horizon open. Decide the direction if delegated.',
     'Continue a prior task from its last recorded outcome. A completed or possibly submitted order must never be replayed by a generic continuation. Never use a generic browser click to submit a trade in place of prepare_trade.',
   ].join('\n'),
   method: [

@@ -106,7 +106,7 @@ const conversationFeed = document.getElementById('conversation-feed') as HTMLEle
 const promptInput = document.getElementById('prompt-input') as HTMLTextAreaElement;
 const btnSend = document.getElementById('btn-send') as HTMLButtonElement;
 const btnStop = document.getElementById('btn-stop') as HTMLButtonElement;
-const toggleTurbo = document.getElementById('toggle-turbo') as HTMLElement;
+const toggleTurbo = document.getElementById('toggle-turbo') as HTMLButtonElement;
 const modeText = document.getElementById('mode-text') as HTMLElement;
 const btnNewChat = document.getElementById('btn-new-chat') as HTMLButtonElement;
 const btnOpenSettings = document.getElementById('btn-open-settings') as HTMLButtonElement;
@@ -265,6 +265,7 @@ function scrollToBottom(): void {
 
 function setRunningState(running: boolean): void {
   isRunning = running;
+  toggleTurbo.disabled = running || !executionModeLoaded;
   const chartButton = document.getElementById('btn-trading') as HTMLButtonElement | null;
   if (chartButton) chartButton.disabled = running;
   if (running) {
@@ -1155,6 +1156,7 @@ async function startAgent(goal: string): Promise<void> {
     try { await stopping; } finally {
       if (stopPending === stopping) stopPending = Promise.resolve();
     }
+    await executionModeReady;
     if (revision !== sessionViewRevision || currentRequestId !== requestId) return;
     const response = await chrome.runtime.sendMessage({
       type: 'START_AGENT',
@@ -1316,15 +1318,27 @@ promptInput.addEventListener('keydown', (e) => {
 
 promptInput.addEventListener('input', autoResizeInput);
 
+const EXECUTION_MODE_KEY = 'smith_review_mode';
+let executionModeLoaded = false;
+toggleTurbo.disabled = true;
+
+function renderExecutionMode(): void {
+  modeText.textContent = safetyGate ? 'Review' : 'Turbo';
+  toggleTurbo.title = safetyGate ? 'Review: Ask before acting' : 'Turbo: Run actions and submissions automatically';
+}
+
+const executionModeReady = chrome.storage.local.get(EXECUTION_MODE_KEY).then(settings => {
+  safetyGate = settings[EXECUTION_MODE_KEY] !== false;
+}).catch(console.warn).finally(() => {
+  executionModeLoaded = true;
+  renderExecutionMode();
+  toggleTurbo.disabled = isRunning;
+});
+
 toggleTurbo.addEventListener('click', () => {
   safetyGate = !safetyGate;
-  if (safetyGate) {
-    modeText.textContent = 'Review';
-    toggleTurbo.title = 'Review Mode: Prompts before entering input';
-  } else {
-    modeText.textContent = 'Turbo';
-    toggleTurbo.title = 'Turbo Mode: Routine actions run automatically. Recognized submissions still ask for review.';
-  }
+  renderExecutionMode();
+  void chrome.storage.local.set({ [EXECUTION_MODE_KEY]: safetyGate }).catch(console.warn);
 });
 
 btnNewChat.addEventListener('click', () => {
