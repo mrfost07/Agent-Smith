@@ -10,6 +10,10 @@ import { CDPController } from './cdp-controller';
 import { SessionManager } from './sessions';
 import { getSessionMessages } from '../shared/db';
 import type { StoredMessage } from '../shared/types';
+import type { ActionExecutionResult } from '../content/action-executor';
+import type { InteractiveElementData } from '../content/dom-observer';
+import { inspectFocusedEditor, type FocusedEditor } from './focused-editor';
+import { EMBEDDED_ASSISTANT_BLOCK, isEmbeddedAssistantControl } from '../content/embedded-assistant';
 import { disallowsBrowsing, explicitlyRequestsPage, quickChatReply, requiresWebResearch, sessionContext, startsWithPageAction } from './conversation-context';
 import { runTrading } from '../trading/runner';
 import { analyzeActiveChart, chartContext, chartPanRequest, isChartFollowUp, isTradingControlAction,
@@ -27,11 +31,17 @@ export interface AgentStepLog {
   result: string;
   success: boolean;
   timestamp: number;
+  targetLabel?: string;
+  blockedOnPage?: string;
+  blockedByAssistant?: boolean;
 }
 
 interface PageObservation {
   id: string;
   url: string;
+  targetLabel?: string;
+  fingerprint?: string;
+  focusedEditor?: FocusedEditor;
 }
 
 interface PendingDemoOrder {
@@ -50,6 +60,30 @@ const MAX_BROWSER_ACTIONS = 120;
 const MAX_BROWSER_RUNTIME_MS = 15 * 60_000;
 const MAX_IDLE_MS = 2 * 60_000;
 
+function actionTargetKey(action: AgentAction): string {
+  return JSON.stringify([action.type, action.targetIndex, action.focused, action.embeddedAssistant, action.selector, action.x, action.y,
+    action.key, action.direction, action.amount, action.text, action.value]);
+}
+
+function pointerPlanIssue(
+  action: AgentAction, indexExists: boolean, viewport: { width: number; height: number } | undefined, hasScreenshot: boolean,
+): string | undefined {
+  if (action.type !== 'click' && action.type !== 'hover') return;
+  if (action.targetIndex !== undefined) {
+    if (!indexExists) return `Control index ${action.targetIndex} is absent from the current observation. Re-select a listed control.`;
+    return;
+  }
+  if (typeof action.selector === 'string' && action.selector.trim()) return;
+  const { x, y } = action;
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return 'The action omitted a valid control index or a complete coordinate pair. Choose a listed control.';
+  }
+  if (!hasScreenshot) return 'No screenshot was available for that coordinate action. Use a control index from the current page.';
+  if (!viewport || x < 0 || y < 0 || x >= viewport.width || y >= viewport.height) {
+    return `The proposed point (${x}, ${y}) is outside the observed viewport or its dimensions are unavailable. Use a listed control or a visible point in CSS pixels.`;
+  }
+}
+
 export class AgentEngine {
   private runId = 0;
   private requestId?: string;
@@ -65,6 +99,8 @@ export class AgentEngine {
   private status: AgentStatus = 'idle';
   private currentGoal = '';
   private transcript = '';
+  private recentUserTasks: string[] = [];
+  private embeddedAssistantDecision?: { origin: string; allowed: boolean };
   private canResumeTrade = false;
   private currentSessionId: string | null = null;
   private activeTabId: number | null = null;
@@ -252,6 +288,8 @@ export class AgentEngine {
     this.approvalPrompt = undefined;
     this.currentGoal = goal;
     this.transcript = '';
+    this.recentUserTasks = [goal];
+    this.embeddedAssistantDecision = undefined;
     this.currentSessionId = options?.sessionId || null;
     this.activeTabId = null;
     this.status = 'running';
@@ -275,6 +313,8 @@ export class AgentEngine {
         const messages = await runOperation(() => getSessionMessages(sessionId), 5000, 'Reading conversation', signal);
         if (this.runId !== runId) return;
         this.transcript = sessionContext(messages, goal);
+        this.recentUserTasks.unshift(...messages.filter(message => message.kind === 'user' && message.text)
+          .slice(-4).map(message => message.text!.slice(0, 1000)));
         const latestTurn = messages.filter(message => ['user', 'assistant', 'error'].includes(message.kind)).at(-1);
         this.canResumeTrade = latestTurn?.source === 'active_chart_trade';
       }
@@ -312,7 +352,7 @@ export class AgentEngine {
         if (needsPage) this.notifyUpdate({ activity: 'Identifying the browser task' });
         const plan = await this.measure(runId, 'model', () => runOperation(() => this.client.planNextStep(
           goal, [], null, null, provider, signal,
-          { transcript: this.transcript, mode: research ? 'research' : needsPage ? 'page' : 'route',
+          { transcript: this.transcript, mode: needsPage ? 'page' : research ? 'research' : 'route',
             activeSite: options?.activeSite, canResumeTrade: this.canResumeTrade },
         ), 105000, 'Model response', signal));
         if (this.runId !== runId) return;
@@ -323,6 +363,11 @@ export class AgentEngine {
         }
         if (plan.action.type === 'search_web') {
           await this.searchWeb(runId, plan.action.text);
+          if (this.runId === runId) await this.runLoop(runId);
+          return;
+        }
+        if (plan.action.type === 'navigate') {
+          await this.openTaskPage(runId, plan.action);
           if (this.runId === runId) await this.runLoop(runId);
           return;
         }
@@ -731,44 +776,56 @@ export class AgentEngine {
   }
 
   private async searchWeb(runId: number, text: string | undefined): Promise<void> {
-    const signal = this.runAbort?.signal;
     const query = typeof text === 'string' ? text.trim().replace(/\s+/g, ' ') : '';
     if (!query || query.length > 300) throw new Error('The selected model did not provide a usable search query.');
-    this.notifyUpdate({ activity: 'Searching…' });
     const search = new URL('https://www.google.com/search');
     search.searchParams.set('q', query);
     if (this.history.some(entry => entry.action.type === 'search_web' && entry.action.url === search.href)) {
       throw new Error('The selected model repeated the same search without finding an answer.');
     }
 
+    await this.openTaskPage(runId, { type: 'search_web', url: search.href, reasoning: 'Searched the web.' });
+  }
+
+  private async openTaskPage(runId: number, action: AgentAction): Promise<void> {
+    const signal = this.runAbort?.signal;
+    if (!action.url) throw new Error('The selected model did not provide a website URL.');
+    const url = new URL(action.url);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+      throw new Error('Opening a website needs an HTTP or HTTPS URL without credentials.');
+    }
+    const isSearch = action.type === 'search_web';
+    this.notifyUpdate({ activity: isSearch ? 'Searching…' : 'Opening website…' });
     await this.releaseBrowser();
     if (this.runId !== runId) return;
 
     const startedAt = Date.now();
-    const tab = await runOperation(() => chrome.tabs.create({ url: search.href, active: true }), 5000, 'Opening search tab', signal);
+    const tab = await runOperation(() => chrome.tabs.create({ url: url.href, active: true }), 5000,
+      isSearch ? 'Opening search tab' : 'Opening website', signal);
     if (this.runId !== runId) return;
-    if (!tab.id) throw new Error('Could not open a tab for the search.');
+    if (!tab.id) throw new Error(isSearch ? 'Could not open a tab for the search.' : 'Could not open a tab for the requested website.');
     this.activeTabId = tab.id;
-    if (this.currentSessionId) {
-      await SessionManager.getInstance().updateStatus(this.currentSessionId, 'running', undefined, tab.id);
-      if (this.runId !== runId) return;
-    }
-    const loadedUrl = await this.waitForReadableTab(tab.id, 'about:blank', search.href);
+    const sessionId = this.currentSessionId;
+    if (sessionId) await SessionManager.getInstance().updateStatus(sessionId, 'running', undefined, tab.id);
     if (this.runId !== runId) return;
-    if (!loadedUrl) throw new Error('The search results could not be read. Check whether the search tab is still open and try again.');
-    const results = new URL(loadedUrl);
-    if (results.origin !== search.origin || results.pathname !== search.pathname || !(results.searchParams.get('q')?.trim().replace(/\s+/g, ' ') === query)) {
+
+    const loadedUrl = await this.waitForReadableTab(tab.id, 'about:blank', url.href);
+    if (this.runId !== runId) return;
+    if (!loadedUrl) throw new Error(isSearch
+      ? 'The search results could not be read. Check whether the search tab is still open and try again.'
+      : 'The requested website did not finish loading.');
+    const destination = new URL(loadedUrl);
+    if (isSearch && (destination.origin !== url.origin || destination.pathname !== url.pathname ||
+        destination.searchParams.get('q')?.trim().replace(/\s+/g, ' ') !== url.searchParams.get('q'))) {
       throw new Error('Google did not open the search results. Check the new tab and try again.');
     }
     await this.ensureTabReady(tab.id, signal);
     if (this.runId !== runId) return;
 
-    const action: AgentAction = { type: 'search_web', url: search.href, reasoning: 'Searched the web.' };
-    const result = 'Opened the search results page.';
+    const result = isSearch ? 'Opened the search results page.' : 'Opened ' + destination.hostname + '.';
     this.history.push({
       step: this.history.length + 1, thought: action.reasoning, action, result, success: true, timestamp: Date.now(),
     });
-    const sessionId = this.currentSessionId;
     if (sessionId) {
       const sessions = SessionManager.getInstance();
       await sessions.recordDomain(sessionId, loadedUrl);
@@ -863,6 +920,7 @@ export class AgentEngine {
             summary: 'User approved action.',
             durationMs: Date.now() - stepStart,
             url: observation?.url,
+            targetLabel: observation?.targetLabel,
           },
         });
       }
@@ -875,6 +933,9 @@ export class AgentEngine {
         result: res.message || 'Action executed.',
         success: res.success,
         timestamp: Date.now(),
+        targetLabel: observation?.targetLabel,
+        blockedOnPage: this.blockedPage(res, observation),
+        blockedByAssistant: res.failure === 'embedded_assistant',
       });
 
       this.notifyUpdate();
@@ -888,6 +949,9 @@ export class AgentEngine {
   private async runLoop(runId: number): Promise<void> {
     if (this.runId !== runId) return;
     this.browserStartedAt ||= Date.now();
+    let recovery: { message: string; fingerprint: string; blocked?: true } | undefined;
+    let rejectedTargetPlans = 0;
+    let requestedCompletionEvidence = false;
     while (this.status === 'running' && this.runId === runId) {
       const last = this.history.at(-1);
       const reason = this.history.length >= MAX_BROWSER_ACTIONS ? 'the action limit'
@@ -932,6 +996,20 @@ export class AgentEngine {
       const pageState = pageStateResponse.state;
       const observation = { id: pageState.observationId, url: pageState.url };
 
+      // An unindexed click can focus an editor inside a frame the page snapshot cannot list.
+      let focusedEditor: FocusedEditor | undefined;
+      if (last?.success && last.action.type === 'click' && last.action.targetIndex === undefined &&
+          !last.action.selector && !this.isRestrictedUrl(observation.url)) {
+        const frames = await runOperation(() => chrome.scripting.executeScript({
+          target: { tabId, allFrames: true }, func: inspectFocusedEditor,
+        }), 1500, 'Checking the editor focused by the click', signal).catch(() => []);
+        if (this.runId !== runId) return;
+        const editors = frames.filter(frame => frame.documentId && frame.result?.token);
+        if (editors.length === 1) {
+          focusedEditor = { documentId: editors[0].documentId, token: editors[0].result!.token, label: editors[0].result!.label };
+        }
+      }
+
       // Capture screenshot if vision enabled (briefly hide glow so screenshot is pristine)
       let screenshotBase64: string | null = null;
       if (capture) {
@@ -940,7 +1018,9 @@ export class AgentEngine {
         ));
         if (this.runId !== runId) return;
       }
-      const pageFingerprint = () => JSON.stringify([pageState.url, pageState.visibleTextSummary, pageState.interactiveElements]);
+      let fingerprint: string | undefined;
+      const pageFingerprint = () => fingerprint ??= JSON.stringify([pageState.url, pageState.viewport, pageState.visibleTextSummary, pageState.interactiveElements]);
+      if (recovery && recovery.fingerprint !== pageFingerprint()) recovery = undefined;
       if (this.waitingFor && this.waitingFor.screenshot === screenshotBase64 && this.waitingFor.page === pageFingerprint()) {
         await waitForRun(capture ? 1500 : 900, signal);
         continue;
@@ -957,7 +1037,8 @@ export class AgentEngine {
         this.history,
         pageState,
         screenshotBase64, this.provider, signal,
-        { transcript: this.transcript, mode: 'browser', canResumeTrade: this.canResumeTrade },
+        { transcript: this.transcript, mode: 'browser', canResumeTrade: this.canResumeTrade, recovery: recovery?.message,
+          focusedEditor: focusedEditor?.label },
       ), 105000, 'Model response', signal));
       if (this.runId !== runId) return;
       if (Date.now() - this.browserStartedAt >= MAX_BROWSER_RUNTIME_MS) continue;
@@ -974,7 +1055,31 @@ export class AgentEngine {
       this.waitingSince = undefined;
       this.waitingFor = undefined;
 
-      if (['complete', 'clarify', 'ask_user'].includes(modelPlan.action.type)) {
+      if (modelPlan.action.type === 'complete') {
+        const lastDelegation = this.history.reduce((lastIndex, step, index) => step.blockedByAssistant ? index : lastIndex, -1);
+        if (lastDelegation >= 0) {
+          const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+          const visible = normalize([pageState.visibleTextSummary, ...pageState.interactiveElements.map(
+            (control: InteractiveElementData) => [control.text, control.ariaLabel, control.controlState].filter(Boolean).join(' '),
+          )].join('\n'));
+          const evidence = new Set(modelPlan.browserEvidence?.map(normalize).filter(value => value.length >= 8 && visible.includes(value)));
+          const acted = this.history.slice(lastDelegation + 1).some(step => step.success && this.requiresDirectInput(step.action));
+          if (!acted || evidence.size < 2) {
+            if (requestedCompletionEvidence) {
+              await this.finishTurn(runId, 'I stopped before I could verify the requested configuration on the page.', 'stopped');
+              return;
+            }
+            requestedCompletionEvidence = true;
+            recovery = { message: 'The requested configuration has not been verified. Use the visible application controls, then cite exact evidence of the configured object and its requested parts.',
+              fingerprint: pageFingerprint() };
+            continue;
+          }
+        }
+        await this.finishTurn(runId, modelPlan.userSummary);
+        break;
+      }
+
+      if (['clarify', 'ask_user'].includes(modelPlan.action.type)) {
         await this.finishTurn(runId, modelPlan.userSummary);
         break;
       }
@@ -992,15 +1097,67 @@ export class AgentEngine {
         return;
       }
 
+      const controls: InteractiveElementData[] = pageState.interactiveElements;
+      const action = modelPlan.action;
+      const selectorMatches = action.type === 'type' && action.targetIndex === undefined && action.selector
+        ? controls.filter(control => control.selector === action.selector) : [];
+      const target = action.targetIndex !== undefined ? controls.find(control => control.index === action.targetIndex)
+        : selectorMatches.length === 1 ? selectorMatches[0] : undefined;
+      const useFocusedEditor = action.type === 'type' && action.focused === true;
+      const targetIssue = action.type === 'type'
+        ? typeof action.text !== 'string' ? 'The type action omitted the text to enter.'
+          : useFocusedEditor ? !focusedEditor || action.targetIndex !== undefined || action.selector || action.x !== undefined || action.y !== undefined
+            ? 'Focused typing needs a verified focused editor and no other target. Click the intended field and observe it first.' : undefined
+          : target?.editable !== true ? 'The type action did not identify a current editable field. Choose a listed control marked editable by its index.'
+            : undefined
+        : pointerPlanIssue(action, Boolean(target), pageState.viewport, Boolean(screenshotBase64));
+      if (targetIssue) {
+        if (++rejectedTargetPlans >= 3) {
+          await this.finishTurn(runId, `I paused because the model repeatedly returned an unusable browser target. ${targetIssue}`, 'stopped');
+          return;
+        }
+        recovery = { message: 'Action rejected before input. ' + targetIssue, fingerprint: pageFingerprint() };
+        this.notifyUpdate({ activity: 'Finding a valid browser control…' });
+        continue;
+      }
+      rejectedTargetPlans = 0;
+      requestedCompletionEvidence = false;
+      if (action.type === 'type' && target) action.targetIndex = target.index;
+      const label = useFocusedEditor ? focusedEditor?.label : target?.ariaLabel || target?.text;
+      const targetLabel = label ? (target?.dialog ? `${label} in ${target.dialog}` : label).slice(0, 150) : undefined;
+      const blocked = this.history.slice(-8).reverse().find(step => step.blockedOnPage &&
+        actionTargetKey(step.action) === actionTargetKey(modelPlan.action) && step.blockedOnPage === pageFingerprint());
+      const retryTarget = blocked && !blocked.blockedByAssistant && await runOperation(() => chrome.tabs.sendMessage(tabId, {
+        type: 'CHECK_ACTION_TARGET', action: modelPlan.action, observationId: observation.id,
+      }, { frameId: 0 }), 1500, 'Checking the blocked control', signal).catch(() => null);
+      if (this.runId !== runId) return;
+      if (blocked && (!retryTarget || retryTarget.ready !== true)) {
+        const message = `${targetLabel || 'The requested control'} is still unavailable. ${blocked.result}`;
+        if (recovery?.blocked && recovery.fingerprint === pageFingerprint()) {
+          await this.finishTurn(runId, `I paused on the current page. ${message}`, 'stopped');
+          return;
+        }
+        recovery = { message: `Repeated action skipped. ${message} Inspect another control, wait for a change, or report the blocker.`,
+          fingerprint: pageFingerprint(), blocked: true };
+        this.notifyUpdate({ activity: 'Replanning around the blocked control…' });
+        continue;
+      }
+      recovery = undefined;
+      const needsReview = this.requiresApproval(modelPlan.action);
+      const actionObservation = {
+        ...observation, targetLabel,
+        focusedEditor: useFocusedEditor ? focusedEditor : undefined,
+        // Preserve the state used for a pending approval. Turbo only needs it on a targeting failure.
+        fingerprint: needsReview ? pageFingerprint() : undefined,
+      };
+
       // Check human confirmation requirement
-      if (this.requiresApproval(modelPlan.action)) {
+      if (needsReview) {
         const host = new URL(pageState.url).hostname;
-        const target = pageState.interactiveElements.find((element: { index: number }) => element.index === modelPlan.action.targetIndex);
-        const label = target?.ariaLabel || target?.text;
         const prompt = 'Allow ' + modelPlan.action.type.replaceAll('_', ' ') + (label ? ' (' + label.slice(0, 120) + ')' : '') + ' on ' + host + '?';
         this.status = 'waiting_confirmation';
         this.pendingConfirmationAction = modelPlan.action;
-        this.pendingObservation = observation;
+        this.pendingObservation = actionObservation;
         this.approvalId = crypto.randomUUID();
         this.approvalPrompt = prompt;
         void chrome.tabs.sendMessage(this.activeTabId, {
@@ -1039,7 +1196,7 @@ export class AgentEngine {
       }).catch(() => {});
 
       const stepStart = Date.now();
-      const actionResult = await this.trackInput(modelPlan.action, runId, observation);
+      const actionResult = await this.trackInput(modelPlan.action, runId, actionObservation);
       if (this.runId !== runId) return;
       const stepDuration = Date.now() - stepStart;
 
@@ -1059,6 +1216,7 @@ export class AgentEngine {
             summary: modelPlan.thought || modelPlan.action.type,
             durationMs: stepDuration,
             url: pageState.url,
+            targetLabel,
           },
         });
       }
@@ -1071,6 +1229,9 @@ export class AgentEngine {
         result: actionResult.message || 'Action executed.',
         success: actionResult.success,
         timestamp: Date.now(),
+        targetLabel,
+        blockedOnPage: this.blockedPage(actionResult, actionObservation, pageFingerprint),
+        blockedByAssistant: actionResult.failure === 'embedded_assistant',
       });
 
       this.notifyUpdate({
@@ -1079,8 +1240,33 @@ export class AgentEngine {
       });
 
       // Observe sooner on stable pages while allowing ongoing transitions to finish.
-      await this.waitForActionSettle(tabId, modelPlan.action.type, runId, signal);
+      if (actionResult.failure !== 'stale_target' && actionResult.failure !== 'stale_observation' &&
+          actionResult.failure !== 'disabled_target' && actionResult.failure !== 'embedded_assistant') {
+        await this.waitForActionSettle(tabId, modelPlan.action.type, runId, signal);
+      }
     }
+  }
+
+  private blockedPage(result: ActionExecutionResult, observation?: PageObservation, fingerprint?: () => string): string | undefined {
+    if (result.failure === 'disabled_target' || result.failure === 'unreachable_target' || result.failure === 'embedded_assistant') {
+      return observation?.fingerprint ?? fingerprint?.();
+    }
+  }
+
+  private async authorizeEmbeddedAssistant(action: AgentAction, runId: number, pageUrl?: string, signal?: AbortSignal): Promise<boolean> {
+    if (action.embeddedAssistant !== true || !pageUrl || !signal || !this.provider) return false;
+    const origin = new URL(pageUrl).origin;
+    if (this.embeddedAssistantDecision?.origin === origin) return this.embeddedAssistantDecision.allowed;
+    const decision = await runOperation(() => this.client.completeAnalysis(
+      'Determine only whether the user explicitly requested using the website’s built-in AI builder, generator, or assistant. ' +
+      'Return ASSISTANT only for that explicit method. Requests to create, configure, or continue browser work normally mean operate the app directly. ' +
+      'A later request to do the work directly overrides earlier permission. Return DIRECT when uncertain. Output one word.',
+      JSON.stringify({ site: origin, userMessages: this.recentUserTasks }), signal, undefined, this.provider,
+    ), 15000, 'Checking which builder the user requested', signal).catch(() => 'DIRECT');
+    if (this.runId !== runId || signal.aborted) return false;
+    const allowed = decision.trim() === 'ASSISTANT';
+    this.embeddedAssistantDecision = { origin, allowed };
+    return allowed;
   }
 
   private async waitForActionSettle(tabId: number, actionType: AgentAction['type'], runId: number, signal?: AbortSignal): Promise<void> {
@@ -1121,7 +1307,7 @@ export class AgentEngine {
     action: AgentAction,
     runId: number,
     observation?: PageObservation,
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<ActionExecutionResult> {
     const activities: Record<string, string> = {
       navigate: 'Navigating…', click: 'Clicking…', type: 'Typing…',
       scroll: 'Scrolling…', wait: 'Waiting…', select: 'Selecting…',
@@ -1136,6 +1322,31 @@ export class AgentEngine {
     const sendToPage = (message: Record<string, unknown>) =>
       runOperation(() => chrome.tabs.sendMessage(tabId, { ...message, observationId }, { frameId: 0 }),
         5000, 'Page action', signal).catch(() => null);
+
+    if (action.type === 'type' && action.focused === true) {
+      const editor = observation?.focusedEditor;
+      const tab = await runOperation(() => chrome.tabs.get(tabId), 2000, 'Checking the focused tab', signal).catch(() => null);
+      if (!editor || typeof action.text !== 'string' || !isCurrent() || !tab?.active || tab.pendingUrl || tab.url !== observation.url) {
+        return { success: false, failure: 'stale_observation', message: 'The focused editor or its tab changed before typing.' };
+      }
+      const [context] = await runOperation(() => chrome.scripting.executeScript({
+        target: { tabId, documentIds: [editor.documentId] }, func: isEmbeddedAssistantControl,
+      }), 1500, 'Checking the focused editor’s purpose', signal).catch(() => []);
+      if (!isCurrent() || typeof context?.result !== 'boolean') {
+        return { success: false, failure: 'stale_target', message: 'The focused editor’s context could not be verified.' };
+      }
+      if (context.result && !await this.authorizeEmbeddedAssistant(action, runId, observation.url, signal)) {
+        return { success: false, failure: 'embedded_assistant', message: EMBEDDED_ASSISTANT_BLOCK };
+      }
+      if (!isCurrent()) return { success: false, message: 'The browser run stopped.' };
+      const [frame] = await runOperation(() => chrome.scripting.executeScript({
+        target: { tabId, documentIds: [editor.documentId] }, func: inspectFocusedEditor,
+        args: [{ token: editor.token, text: action.text! }],
+      }), 3000, 'Typing into the verified focused editor', signal).catch(() => []);
+      if (!frame?.result) return { success: false, failure: 'stale_target', message: 'The same editable field is no longer focused or its frame could not be reached.' };
+      return frame.result.written ? { success: true, message: 'Entered and verified text in the focused editor.' }
+        : { success: false, message: 'The focused editor did not retain the text.' };
+    }
 
     // Special Action 1: Tailor Resume on Local Bridge
     if (action.type === 'tailor_resume') {
@@ -1244,7 +1455,13 @@ export class AgentEngine {
       return { success: dragged, message: dragged ? 'Drag dispatched.' : 'Chrome could not dispatch the drag.' };
     }
 
-    const prepared = await sendToPage({ type: 'EXECUTE_ACTION', action });
+    let allowEmbeddedAssistant = false;
+    let prepared = await sendToPage({ type: 'EXECUTE_ACTION', action });
+    if (prepared?.failure === 'embedded_assistant' &&
+        await this.authorizeEmbeddedAssistant(action, runId, observation?.url, signal) && isCurrent()) {
+      allowEmbeddedAssistant = true;
+      prepared = await sendToPage({ type: 'EXECUTE_ACTION', action, allowEmbeddedAssistant });
+    }
     if (!isCurrent()) return { success: false, message: 'The browser run stopped.' };
     if (!prepared) return { success: false, message: 'The page could not respond to this action.' };
     if (!prepared.success) return prepared;
@@ -1263,7 +1480,7 @@ export class AgentEngine {
       if (action.type === 'click') {
         const sent = await CDPController.click(tabId, x, y, async () => {
           if (!isCurrent()) return false;
-          const point = await sendToPage({ type: 'CHECK_CLICK_POINT', x, y });
+          const point = await sendToPage({ type: 'CHECK_CLICK_POINT', x, y, allowEmbeddedAssistant });
           return Boolean(point?.success) && isCurrent();
         });
         if (sent && isCurrent()) void sendToPage({ type: 'POINTER_FEEDBACK', x, y, click: true });
@@ -1282,8 +1499,11 @@ export class AgentEngine {
   }
 
   private requiresApproval(action: AgentAction): boolean {
-    return this.safetyGate &&
-      ['click', 'drag', 'press_key', 'type', 'select', 'upload_file', 'tailor_resume'].includes(action.type);
+    return this.safetyGate && this.requiresDirectInput(action);
+  }
+
+  private requiresDirectInput(action: AgentAction): boolean {
+    return ['click', 'drag', 'press_key', 'type', 'select', 'upload_file', 'tailor_resume'].includes(action.type);
   }
 
   private notifyUpdate(extra?: Partial<Parameters<NonNullable<AgentEngine['onUpdateCallback']>>[0]>) {

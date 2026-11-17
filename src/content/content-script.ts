@@ -104,8 +104,13 @@ function registerContentScript(): void {
             sendResponse({ success: false, message: 'ExpertOption trade controls require the dedicated demo order tool.' });
             break;
           }
-          const result = await ActionExecutor.execute(request.action, request.observationId);
+          const result = await ActionExecutor.execute(request.action, request.observationId, request.allowEmbeddedAssistant === true);
           sendResponse(result);
+          break;
+        }
+
+        case 'CHECK_ACTION_TARGET': {
+          sendResponse({ ready: ActionExecutor.isActionTargetReady(request.action, request.observationId) });
           break;
         }
 
@@ -121,7 +126,7 @@ function registerContentScript(): void {
 
         case 'CHECK_CLICK_POINT': {
           const { x, y, observationId } = request;
-          sendResponse({ success: ActionExecutor.validateClickPoint({ x, y }, observationId) });
+          sendResponse({ success: ActionExecutor.validateClickPoint({ x, y }, observationId, request.allowEmbeddedAssistant === true) });
           break;
         }
 

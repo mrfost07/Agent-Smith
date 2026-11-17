@@ -68,6 +68,7 @@ export interface StoredMessage {
     durationMs: number;
     screenshotId?: string;
     url?: string;
+    targetLabel?: string;
   };
   permission?: {
     type: string;

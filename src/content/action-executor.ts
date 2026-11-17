@@ -1,5 +1,6 @@
 import { DOMObserver } from './dom-observer';
 import { ElementAnnotator } from './element-annotator';
+import { EMBEDDED_ASSISTANT_BLOCK, isEmbeddedAssistantControl } from './embedded-assistant';
 
 interface Point {
   x: number;
@@ -10,6 +11,7 @@ export interface ActionExecutionResult {
   success: boolean;
   message: string;
   coords?: Point;
+  failure?: 'stale_observation' | 'stale_target' | 'disabled_target' | 'unreachable_target' | 'embedded_assistant';
 }
 
 interface PageAction {
@@ -29,59 +31,81 @@ interface PageAction {
 export class ActionExecutor {
   private static clickTarget: Element | null = null;
   private static clickTargetIndex?: number;
+  private static coordinateClick = false;
 
-  static async execute(action: PageAction, observationId?: string): Promise<ActionExecutionResult> {
+  private static assistantBlocked(): ActionExecutionResult {
+    return { success: false, failure: 'embedded_assistant',
+      message: EMBEDDED_ASSISTANT_BLOCK };
+  }
+
+  static isActionTargetReady(action: PageAction, observationId?: string): boolean {
+    if (!DOMObserver.isCurrentObservation(observationId)) return false;
+    const target = this.resolveTarget(action);
+    if (target) {
+      return this.canInteract(target) && (action.type === 'press_key' || Boolean(this.findHitPoint(target)));
+    }
+    return action.targetIndex === undefined && !action.selector && Boolean(this.resolvePointer(action, null));
+  }
+
+  static async execute(action: PageAction, observationId?: string, allowEmbeddedAssistant = false): Promise<ActionExecutionResult> {
     if (!DOMObserver.isCurrentObservation(observationId)) {
-      return { success: false, message: 'The page changed. Observe it again before acting.' };
+      return { success: false, failure: 'stale_observation', message: 'The page changed. Observe it again before acting.' };
     }
 
     const hasTarget = action.targetIndex !== undefined || Boolean(action.selector);
     const target = this.resolveTarget(action);
     if (hasTarget && !target) {
-      return { success: false, message: 'The target is no longer available. Observe the page again.' };
+      return { success: false, failure: 'stale_target', message: 'The target is no longer available. Find its current control in a new observation.' };
+    }
+    if (target && !this.canInteract(target)) {
+      return { success: false, failure: 'disabled_target', message: 'The target is disabled or inside an inactive region.' };
     }
 
     switch (action.type) {
       case 'click':
       case 'hover': {
         const coords = this.resolvePointer(action, target);
-        if (!coords) return { success: false, message: 'No visible, unobstructed point for this target. Observe the page again.' };
+        if (!coords) return this.pointerFailure(target, action);
         if (action.type === 'click') {
-          this.clickTarget = target ?? this.hitAt(coords);
+          const hit = this.hitAt(coords);
+          if (!allowEmbeddedAssistant && isEmbeddedAssistantControl(hit)) return this.assistantBlocked();
+          this.clickTarget = target ?? hit;
           this.clickTargetIndex = action.targetIndex;
+          this.coordinateClick = target === null;
         }
         if (action.showCursor !== false) ElementAnnotator.moveVisualCursorTo(coords.x, coords.y);
         return { success: true, message: 'Pointer target resolved.', coords };
       }
       case 'type': {
-        if (!target || !this.canInteract(target) || typeof action.text !== 'string') {
+        if (!target || !DOMObserver.acceptsText(target) || typeof action.text !== 'string') {
           return { success: false, message: 'No editable text target.' };
         }
+        if (!allowEmbeddedAssistant && isEmbeddedAssistantControl(target)) return this.assistantBlocked();
         const coords = this.resolvePointer(action, target);
-        if (!coords) return { success: false, message: 'The text target is covered or outside the viewport.' };
+        if (!coords) return this.pointerFailure(target);
         if (action.showCursor !== false) ElementAnnotator.moveVisualCursorTo(coords.x, coords.y);
         return this.replaceText(target, action.text);
       }
       case 'press_key': {
+        if (!allowEmbeddedAssistant && isEmbeddedAssistantControl(target ?? document.activeElement)) return this.assistantBlocked();
         if (!target) return { success: true, message: 'Using the current keyboard focus.' };
-        if (!this.canInteract(target)) return { success: false, message: 'The keyboard target is disabled.' };
         target.focus();
         const root = target.getRootNode() as Document | ShadowRoot;
         const focused = root.activeElement === target || Boolean(root.activeElement && target.contains(root.activeElement));
         return { success: focused, message: focused ? 'Keyboard target focused.' : 'The target could not be focused.' };
       }
       case 'select': {
-        if (!(target instanceof HTMLSelectElement) || !this.canInteract(target)) {
+        if (!(target instanceof HTMLSelectElement)) {
           return { success: false, message: 'No enabled native dropdown found.' };
         }
         const coords = this.resolvePointer(action, target);
-        if (!coords) return { success: false, message: 'The dropdown is covered or outside the viewport.' };
+        if (!coords) return this.pointerFailure(target);
         if (action.showCursor !== false) ElementAnnotator.moveVisualCursorTo(coords.x, coords.y);
         return this.selectOption(target, action.value ?? action.text ?? '');
       }
       case 'scroll': {
         const point = this.resolvePointer(action, target);
-        if (target && !point) return { success: false, message: 'The scroll target is covered.' };
+        if (target && !point) return this.pointerFailure(target);
         if ((action.x !== undefined || action.y !== undefined) && !point) {
           return { success: false, message: 'Scroll coordinates are outside the observed viewport.' };
         }
@@ -100,11 +124,40 @@ export class ActionExecutor {
     }
   }
 
-  static validateClickPoint(point: Point, observationId?: string): boolean {
+  private static pointerFailure(target: HTMLElement | null, action?: PageAction): ActionExecutionResult {
+    const failure = { success: false, failure: 'unreachable_target' as const };
+    if (!target) {
+      if (!DOMObserver.isObservedViewport()) {
+        return { success: false, failure: 'stale_observation',
+          message: 'The viewport moved or resized after the page was observed. Take a fresh observation before using coordinates.' };
+      }
+      if (!this.isViewportPoint(action?.x, action?.y)) {
+        return { ...failure, message: `The action has missing or out-of-bounds coordinates for the ${window.innerWidth} × ${window.innerHeight} viewport. Choose a current control.` };
+      }
+      return { ...failure, message: 'The point has no actionable target. Use a control from the latest observation.' };
+    }
+
+    const rect = target.getBoundingClientRect();
+    const left = Math.max(0, rect.left), right = Math.min(window.innerWidth, rect.right);
+    const top = Math.max(0, rect.top), bottom = Math.min(window.innerHeight, rect.bottom);
+    if (right <= left || bottom <= top) {
+      return { ...failure, message: 'The target is outside the viewport after scrolling it into view.' };
+    }
+    const hit = this.hitAt({ x: (left + right) / 2, y: (top + bottom) / 2 });
+    const surface = hit?.closest('dialog, [role="dialog"], [role="alertdialog"]') ?? hit;
+    const label = hit !== target && !target.contains(hit) &&
+      (surface?.getAttribute('aria-label') || surface?.getAttribute('role') || surface?.localName);
+    return { ...failure, message: 'No visible, unobstructed point for this target.' +
+      (label ? ' Its center is hit-tested on ' + label.slice(0, 100) + '.' : '') };
+  }
+
+  static validateClickPoint(point: Point, observationId?: string, allowEmbeddedAssistant = false): boolean {
     const target = this.clickTarget;
     if (this.clickTargetIndex !== undefined && DOMObserver.getObservedElement(this.clickTargetIndex) !== target) return false;
+    if (this.coordinateClick && !DOMObserver.isObservedViewport()) return false;
     return DOMObserver.isCurrentObservation(observationId) && Boolean(target && this.canInteract(target)
-      && this.isViewportPoint(point.x, point.y) && this.hitsTarget(point, target));
+      && this.isViewportPoint(point.x, point.y) && this.hitsTarget(point, target)
+      && (allowEmbeddedAssistant || !isEmbeddedAssistantControl(this.hitAt(point))));
   }
 
   static isViewportPoint(x: unknown, y: unknown): boolean {
@@ -182,17 +235,12 @@ export class ActionExecutor {
 
   private static replaceText(target: HTMLElement, text: string): ActionExecutionResult {
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-      if (target.readOnly || (target instanceof HTMLInputElement && !['text', 'search', 'email', 'tel', 'url', 'number', 'password', 'date', 'time', 'datetime-local', 'month', 'week'].includes(target.type))) {
-        return { success: false, message: 'The input does not accept text.' };
-      }
       target.focus();
       const prototype = target instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
       Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(target, text);
-    } else if (target.isContentEditable) {
+    } else {
       target.focus();
       target.textContent = text;
-    } else {
-      return { success: false, message: 'The element does not accept text.' };
     }
 
     target.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));

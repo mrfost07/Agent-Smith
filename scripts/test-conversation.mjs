@@ -83,7 +83,8 @@ globalThis.chrome = {
           title: id === 1 ? 'Foony Chess' : 'Bitcoin research',
           observationId: 'observed-' + id,
           visibleTextSummary: id === 1 ? 'Play chess online' : 'Bitcoin: A Peer-to-Peer Electronic Cash System, by Satoshi Nakamoto',
-          interactiveElements: id === 1 ? [] : [{ index: 19, tag: 'a', text: 'Bitcoin whitepaper', href: source }],
+          interactiveElements: id === 1 ? [{ index: 0, tag: 'button', text: 'Test control' }] :
+            [{ index: 19, tag: 'a', text: 'Bitcoin whitepaper', href: source }],
         },
       };
     },
@@ -378,6 +379,349 @@ for (const [goal, action, expected] of [
   assert.deepEqual(submitInput, expected);
 }
 chrome.tabs.sendMessage = originalSend;
+
+// A named-site task must open and observe the site instead of answering the quiz locally.
+const quizUrl = 'https://chatgpt.com/';
+const quizGoal = 'go to chatgpt and ask it 10 question with interactive choices, after it generates 10 questions i want you to answer it.';
+const quizSession = 'external-quiz';
+let quizPrompt = '';
+let quizStep = 0;
+let quizReads = 0;
+const sendCommand = chrome.debugger.sendCommand;
+try {
+  chrome.debugger.sendCommand = async (target, method, params) => {
+    assert.equal(tabs.get(target.tabId).url, quizUrl);
+    if (method === 'Input.dispatchMouseEvent' && params.type === 'mouseReleased') quizStep++;
+  };
+  chrome.tabs.sendMessage = async (id, message) => {
+    if (tabs.get(id).url !== quizUrl) return originalSend(id, message);
+    if (message.type === 'GET_PAGE_STATE') {
+      quizReads++;
+      const visibleTextSummary = quizStep === 0 ? 'Log in or start chatting now' :
+        quizStep <= 10 ? `Question ${quizStep} of 10` : 'Quiz results: 10 answers recorded';
+      const interactiveElements = quizStep === 0 ? [
+        { index: 0, tag: 'div', text: 'Message ChatGPT', editable: true }, { index: 1, tag: 'button', text: 'Send' },
+      ] : [{ index: 2, tag: 'button', text: 'Choice B' }];
+      return { success: true, state: { url: quizUrl, title: 'ChatGPT quiz',
+        observationId: `quiz-${quizStep}`, visibleTextSummary, interactiveElements } };
+    }
+    if (message.type === 'EXECUTE_ACTION') {
+      assert.equal(message.observationId, `quiz-${quizStep}`);
+      if (message.action.type === 'type') quizPrompt = message.action.text;
+      else assert.equal(message.action.targetIndex, quizStep === 0 ? 1 : 2);
+      return { success: true, coords: { x: 120, y: 80 } };
+    }
+    if (message.type === 'CHECK_CLICK_POINT') return { success: true };
+    return originalSend(id, message);
+  };
+
+  responses.push(() => complete('ChatGPT is blocked, so I generated the questions myself.'), ({ system }) => {
+    assert.match(system, /Allowed action types:[^.]*\bnavigate\b/);
+    assert.match(system, /Allowed action types:[^.]*\bobserve_page\b/);
+    return { action: { type: 'navigate', url: quizUrl } };
+  }, ({ prompt }) => {
+    assert.match(prompt, /Current page observation/);
+    assert.match(prompt, /"url":"https:\/\/chatgpt\.com\/"/);
+    assert.match(prompt, /Log in or start chatting now/);
+    return { action: { type: 'type', targetIndex: 0, text: 'Generate 10 questions with interactive choices.' } };
+  }, () => ({ action: { type: 'click', targetIndex: 1 } }));
+  for (let n = 1; n <= 10; n++) {
+    responses.push(({ prompt }) => {
+      assert.ok(prompt.includes(`Question ${n} of 10`));
+      return { action: { type: 'click', targetIndex: 2 } };
+    });
+  }
+  responses.push(({ prompt }) => {
+    assert.match(prompt, /Quiz results: 10 answers recorded/);
+    return complete('I completed the quiz on ChatGPT.');
+  });
+  await agent.start(quizGoal, 1, { sessionId: quizSession, visionEnabled: false, safetyGate: false });
+  assert.equal(opened.at(-1), quizUrl);
+  assert.equal(tabs.get(1).url, activePage);
+  assert.equal(quizReads, 13);
+  assert.equal(quizStep, 11);
+  assert.equal(quizPrompt, 'Generate 10 questions with interactive choices.');
+  assert.equal(updates.at(-1).summary, 'I completed the quiz on ChatGPT.');
+  assert.ok(!messages.get(quizSession).some(message => message.kind === 'permission'));
+  assert.ok(messages.get(quizSession).some(message => message.step?.tool === 'navigate' && message.step.url === quizUrl));
+} finally {
+  chrome.tabs.sendMessage = originalSend;
+  chrome.debugger.sendCommand = sendCommand;
+}
+
+// Obstructed controls are replanned without sending duplicate input. A fresh
+// snapshot can still identify a replaced control by its label and dialog.
+let workflowStep = 0;
+let overlayDisappeared = false;
+const executedTargets = [];
+const workflowClick = targetIndex => ({ action: { type: 'click', targetIndex } });
+try {
+  chrome.tabs.sendMessage = async (id, message) => {
+    if (message.type === 'GET_PAGE_STATE') {
+      const observed = await originalSend(id, message);
+      observed.state.observationId = `workflow-${workflowStep}`;
+      observed.state.visibleTextSummary = workflowStep === 3 ? 'Saved draft' : 'Workflow editor';
+      observed.state.interactiveElements = [
+        { index: workflowStep >= 2 ? 3 : 0, tag: 'button', text: 'Save draft', dialog: 'Workflow editor' },
+        ...(workflowStep === 0 ? [{ index: 1, tag: 'button', text: 'Close help overlay' }] : []),
+      ];
+      return observed;
+    }
+    if (message.type === 'EXECUTE_ACTION') {
+      const target = message.action.targetIndex;
+      executedTargets.push(target);
+      assert.equal(message.observationId, `workflow-${workflowStep}`);
+      if (workflowStep === 0 && target === 0 && !overlayDisappeared) {
+        return { success: false, failure: 'unreachable_target', message: 'The Help dialog covers Save draft.' };
+      }
+      if (workflowStep === 1 && target === 0) {
+        workflowStep++;
+        return { success: false, failure: 'stale_target', message: 'The control was replaced.' };
+      }
+      assert.equal(target, workflowStep === 0 ? (overlayDisappeared ? 0 : 1) : 3);
+      workflowStep = overlayDisappeared ? 3 : workflowStep + 1;
+      return { success: true, coords: { x: 120, y: 80 } };
+    }
+    if (message.type === 'CHECK_CLICK_POINT') return { success: true };
+    if (message.type === 'CHECK_ACTION_TARGET') return { ready: overlayDisappeared };
+    return originalSend(id, message);
+  };
+  responses.push(() => workflowClick(0), () => workflowClick(0), ({ prompt }) => {
+    assert.match(prompt, /Repeated action skipped/);
+    assert.match(prompt, /Help dialog covers Save draft/);
+    return workflowClick(1);
+  }, () => workflowClick(0), ({ prompt }) => {
+    assert.match(prompt, /The control was replaced/);
+    assert.match(prompt, /"index":3.*"label":"Save draft".*"dialog":"Workflow editor"/);
+    return workflowClick(3);
+  }, ({ prompt }) => {
+    assert.match(prompt, /Saved draft/);
+    return complete('Draft saved.');
+  });
+  const workflowSession = 'workflow-recovery';
+  await agent.start('Click Save draft in the editor', 1, { sessionId: workflowSession, visionEnabled: false, safetyGate: false });
+  assert.deepEqual(executedTargets, [0, 1, 0, 3]);
+  assert.equal(updates.at(-1).summary, 'Draft saved.');
+  const resumed = sessionContext(messages.get(workflowSession), 'continue');
+  assert.match(resumed, /"target":"Save draft in Workflow editor","error":"The Help dialog covers Save draft\./);
+
+  workflowStep = 0;
+  executedTargets.length = 0;
+  responses.push(() => workflowClick(0), () => workflowClick(0), () => workflowClick(0));
+  await agent.start('Click Save draft in the editor', 1, { sessionId: 'workflow-blocked', visionEnabled: false, safetyGate: false });
+  assert.deepEqual(executedTargets, [0]);
+  assert.match(updates.at(-1).summary, /I paused on the current page.*Help dialog covers Save draft/);
+  assert.equal(sessionStates.get('workflow-blocked'), 'stopped');
+
+  workflowStep = 0;
+  executedTargets.length = 0;
+  responses.push(() => workflowClick(0), () => {
+    overlayDisappeared = true;
+    return workflowClick(0);
+  }, ({ prompt }) => {
+    assert.match(prompt, /Saved draft/);
+    return complete('Draft saved after the overlay cleared.');
+  });
+  await agent.start('Click Save draft in the editor', 1, { sessionId: 'workflow-overlay-cleared', visionEnabled: false, safetyGate: false });
+  assert.deepEqual(executedTargets, [0, 0]);
+  assert.equal(updates.at(-1).summary, 'Draft saved after the overlay cleared.');
+} finally {
+  chrome.tabs.sendMessage = originalSend;
+}
+
+const pointerAttempts = [];
+try {
+  chrome.tabs.sendMessage = async (id, message) => {
+    if (message.type === 'GET_PAGE_STATE') {
+      const observation = await originalSend(id, message);
+      observation.state.interactiveElements = [{ index: 5, tag: 'button', text: 'Add trigger' }];
+      observation.state.viewport = { width: 800, height: 600 };
+      return observation;
+    }
+    if (message.type === 'EXECUTE_ACTION') {
+      pointerAttempts.push(message.action);
+      return { success: true, coords: { x: 120, y: 80 } };
+    }
+    if (message.type === 'CHECK_CLICK_POINT') return { success: true };
+    return originalSend(id, message);
+  };
+  responses.push(() => ({ action: { type: 'click' } }), ({ prompt }) => {
+    assert.match(prompt, /omitted a valid control index/);
+    return workflowClick(900);
+  }, ({ prompt }) => {
+    assert.match(prompt, /Control index 900 is absent/);
+    assert.match(prompt, /"index":5.*Add trigger/);
+    return workflowClick(5);
+  }, () => complete('Trigger panel opened.'));
+  await agent.start('Click Add trigger', 1, { sessionId: 'pointer-replan', visionEnabled: false, safetyGate: false });
+  assert.deepEqual(pointerAttempts.map(action => action.targetIndex), [5]);
+  assert.equal(updates.at(-1).summary, 'Trigger panel opened.');
+
+  const guessedPoint = () => ({ action: { type: 'click', x: 100, y: 100 } });
+  responses.push(guessedPoint, guessedPoint, guessedPoint);
+  await agent.start('Click Add trigger', 1, { sessionId: 'pointer-without-vision', visionEnabled: false, safetyGate: false });
+  assert.equal(pointerAttempts.length, 1);
+  assert.match(updates.at(-1).summary, /No screenshot was available/);
+
+  const pointerModel = storage.smith_provider_openrouter.model;
+  try {
+    storage.smith_provider_openrouter.model = { ...pointerModel, vision: true };
+    agent.setEnvironmentHandlers({ captureScreenshot: async () => 'data:image/jpeg;base64,AA==' });
+    responses.push(() => ({ action: { type: 'click', x: 800, y: 100 } }), ({ prompt }) => {
+      assert.match(prompt, /outside the observed viewport/);
+      assert.match(prompt, /A current viewport screenshot is attached/);
+      return guessedPoint();
+    }, () => complete('Visual target clicked.'));
+    await agent.start('Click the icon drawn on the canvas', 1, { sessionId: 'visual-pointer', visionEnabled: true, safetyGate: false });
+    assert.equal(updates.at(-1).summary, 'Visual target clicked.');
+    assert.deepEqual(pointerAttempts.map(action => [action.targetIndex, action.x, action.y]), [[5, undefined, undefined], [undefined, 100, 100]]);
+
+    const sendPointer = chrome.tabs.sendMessage;
+    let nameEntered = false;
+    chrome.tabs.sendMessage = async (id, message) => {
+      const result = await sendPointer(id, message);
+      if (message.type === 'GET_PAGE_STATE') {
+        result.state.interactiveElements.push({ index: 12, tag: 'input', ariaLabel: 'Workflow name',
+          selector: '#workflow-name', editable: true, dialog: 'Create workflow' });
+        if (nameEntered) result.state.visibleTextSummary = 'Missed Call';
+      }
+      if (message.type === 'EXECUTE_ACTION' && message.action.type === 'type') {
+        assert.equal(message.action.targetIndex, 12);
+        assert.equal(message.action.text, 'Missed Call');
+        nameEntered = true;
+      }
+      return result;
+    };
+    responses.push(() => ({ action: { type: 'type', x: 450, y: 420, text: 'Missed Call' } }), ({ prompt }) => {
+      assert.match(prompt, /did not identify a current editable field/);
+      return { action: { type: 'type', selector: 'textarea', text: 'Missed Call' } };
+    }, ({ prompt }) => {
+      assert.match(prompt, /did not identify a current editable field/);
+      assert.match(prompt, /"index":12.*Workflow name.*"editable":true/);
+      return { action: { type: 'type', targetIndex: 12, text: 'Missed Call' } };
+    }, ({ prompt }) => {
+      assert.match(prompt, /Visible page text:\nMissed Call/);
+      return complete('Entered the workflow name.');
+    });
+    await agent.start('Click into the workflow editor and enter its name', 1, { sessionId: 'workflow-text-target', visionEnabled: true, safetyGate: false });
+    assert.equal(updates.at(-1).summary, 'Entered the workflow name.');
+    assert.equal(pointerAttempts.filter(action => action.type === 'type').length, 1);
+
+    const scripting = chrome.scripting.executeScript;
+    try {
+      tabs.get(1).active = true;
+      let frameValue;
+      chrome.scripting.executeScript = async ({ target, args }) => {
+        assert.equal(target.tabId, 1);
+        if (target.allFrames) return [
+          { frameId: 0, documentId: 'top-document', result: null },
+          { frameId: 2, documentId: 'workflow-frame-document', result: { token: 'editor-token', label: 'AI workflow prompt' } },
+        ];
+        assert.deepEqual(target.documentIds, ['workflow-frame-document']);
+        if (!args) return [{ result: false }];
+        assert.deepEqual(args, [{ token: 'editor-token', text: 'Create a missed call workflow.' }]);
+        frameValue = args[0].text;
+        return [{ result: { token: 'editor-token', label: 'AI workflow prompt', written: true } }];
+      };
+      responses.push(() => ({ action: { type: 'observe_page' } }), () => ({ action: { type: 'click', x: 500, y: 380 } }), ({ system, prompt }) => {
+        assert.match(system, /iframe alone does not mean the controls are inaccessible/i);
+        assert.match(prompt, /Verified focused editor after your click: "AI workflow prompt"/);
+        return { action: { type: 'type', focused: true, text: 'Create a missed call workflow.' } };
+      }, ({ prompt }) => {
+        assert.match(prompt, /Entered and verified text in the focused editor/);
+        return complete('Entered the AI workflow prompt.');
+      });
+      await agent.start('continue', 1, { sessionId: 'workflow-text-target', visionEnabled: true, safetyGate: false });
+      assert.equal(frameValue, 'Create a missed call workflow.');
+      assert.equal(updates.at(-1).summary, 'Entered the AI workflow prompt.');
+    } finally {
+      delete tabs.get(1).active;
+      chrome.scripting.executeScript = scripting;
+    }
+  } finally {
+    storage.smith_provider_openrouter.model = pointerModel;
+    agent.setEnvironmentHandlers(undefined);
+  }
+} finally {
+  chrome.tabs.sendMessage = originalSend;
+}
+
+// Exercise the direct builder path after the model takes the AI-builder detour.
+const manualBuilder = [
+  'Add new trigger', 'Call Details', 'Incoming', 'Busy', 'No answer', 'Save Trigger',
+  'Add action', 'Send SMS', 'Save Action', 'Save draft',
+];
+let builderStep = 0;
+let blockedAi = 0;
+let assistantApproved = false;
+const builderActions = [];
+const builderModel = storage.smith_provider_openrouter.model;
+const builderCommand = chrome.debugger.sendCommand;
+try {
+  storage.smith_provider_openrouter.model = { ...builderModel, vision: true };
+  agent.setEnvironmentHandlers({ captureScreenshot: async () => 'data:image/jpeg;base64,AA==' });
+  chrome.debugger.sendCommand = async (_, _method, params) => {
+    if (params.type === 'mouseReleased' && !assistantApproved) builderStep++;
+  };
+  chrome.tabs.sendMessage = async (id, message) => {
+    if (message.type === 'GET_PAGE_STATE') {
+      const observation = await originalSend(id, message);
+      observation.state.viewport = { width: 800, height: 600 };
+      observation.state.visibleTextSummary = builderStep === manualBuilder.length
+        ? 'Missed Call Text Back • Call Details: Incoming, Busy or No answer • Send SMS action • Draft saved'
+        : 'Build workflows by chatting with AI • ' + manualBuilder[builderStep];
+      observation.state.interactiveElements = manualBuilder[builderStep] ?
+        [{ index: 4, tag: 'button', text: manualBuilder[builderStep] }] : [];
+      return observation;
+    }
+    if (message.type === 'EXECUTE_ACTION') {
+      if (message.action.x !== undefined) {
+        if (message.allowEmbeddedAssistant === true) assistantApproved = true;
+        else {
+          blockedAi++;
+          return { success: false, failure: 'embedded_assistant', message: 'This control belongs to an embedded AI composer.' };
+        }
+      } else {
+        assert.equal(message.action.targetIndex, 4);
+        builderActions.push(manualBuilder[builderStep]);
+      }
+      return { success: true, coords: { x: 120, y: 80 } };
+    }
+    if (message.type === 'CHECK_CLICK_POINT') return { success: true };
+    return originalSend(id, message);
+  };
+  const assistantClick = (embeddedAssistant = false) => ({ action: { type: 'click', x: 550, y: 290, embeddedAssistant } });
+  responses.push(() => ({ action: { type: 'observe_page' } }), () => assistantClick(),
+    () => complete('Use the AI builder to complete the workflow manually.'));
+  for (const label of manualBuilder) responses.push(({ prompt }) => {
+    if (label === 'Add new trigger') assert.match(prompt, /requested configuration has not been verified/);
+    assert.ok(prompt.includes(label));
+    return workflowClick(4);
+  });
+  responses.push(({ prompt }) => {
+    assert.match(prompt, /Draft saved/);
+    return { ...complete('Verified the missed-call draft.'),
+      browserEvidence: ['Call Details: Incoming, Busy or No answer', 'Send SMS action'] };
+  });
+  await agent.start('Build a missed call workflow in the browser', 1, { sessionId: 'direct-builder', visionEnabled: true, safetyGate: false });
+  assert.equal(blockedAi, 1);
+  assert.deepEqual(builderActions, manualBuilder);
+  assert.equal(updates.at(-1).summary, 'Verified the missed-call draft.');
+
+  responses.push(() => ({ action: { type: 'observe_page' } }), () => assistantClick(true), ({ system, prompt }) => {
+    assert.match(system, /explicitly requested using the website/);
+    assert.match(prompt, /Use the website's built-in AI builder/);
+    return 'ASSISTANT';
+  }, () => complete('Opened the requested AI builder.'));
+  await agent.start("Use the website's built-in AI builder", 1, { sessionId: 'opt-in-builder', visionEnabled: true, safetyGate: false });
+  assert.equal(assistantApproved, true);
+  assert.equal(updates.at(-1).summary, 'Opened the requested AI builder.');
+} finally {
+  chrome.tabs.sendMessage = originalSend;
+  chrome.debugger.sendCommand = builderCommand;
+  storage.smith_provider_openrouter.model = builderModel;
+  agent.setEnvironmentHandlers(undefined);
+}
 
 responses.push(() => ({ action: { type: 'extract' } }), ({ system }) => {
   assert.doesNotMatch(system.match(/Allowed action types:[^.]+/)?.[0] ?? '', /\bextract\b/);
@@ -1080,10 +1424,15 @@ assert.equal(demoPrepares, preparesBeforeFollowUp);
 assert.deepEqual(demoInput, []);
 
 tabs.set(1, { ...savedTab, active: true, url: 'https://www.expertoption.com/help/' });
-responses.push(() => ({ action: { type: 'click', x: 100, y: 100 } }));
+chrome.tabs.sendMessage = async (id, message) => {
+  const result = await originalSend(id, message);
+  if (message.type === 'GET_PAGE_STATE') result.state.interactiveElements = [{ index: 0, tag: 'button', text: 'Help' }];
+  return result;
+};
+responses.push(() => ({ action: { type: 'click', targetIndex: 0 } }));
 await agent.start('Click the help button', 1, { sessionId: 'expertoption-help', safetyGate: true, visionEnabled: false });
 assert.equal(agent.getStatus().status, 'waiting_confirmation');
-assert.match(agent.getStatus().summary, /Allow click on www.expertoption.com/);
+assert.match(agent.getStatus().summary, /Allow click \(Help\) on www.expertoption.com/);
 agent.stop();
 assert.equal(responses.length, 0);
 chrome.tabs.sendMessage = originalSend;

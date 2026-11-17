@@ -54,7 +54,9 @@ export function startsWithPageAction(goal: string): boolean {
 }
 
 export function explicitlyRequestsPage(goal: string): boolean {
-  return /^(?:please\s+)?(?:use|look (?:at|in)|go (?:to|into)|check|inspect|open)\s+(?:(?:the|this|my)\s+)?(?:browser|(?:active|current|open)\s+tab)\b/i.test(goal.trim());
+  const request = goal.trim().replace(/^(?:(?:can|could|would) you\s+)?(?:please\s+)?/i, '');
+  return /^(?:go to|navigate to|visit)\s+\S/i.test(request) ||
+    /^(?:use|look (?:at|in)|go into|check|inspect|open)\s+(?:(?:the|this|my)\s+)?(?:browser|(?:active|current|open)\s+tab)\b/i.test(request);
 }
 
 export function pageKeywords(goal: string, transcript: string): ReadonlySet<string> {
@@ -122,7 +124,8 @@ export function sessionContext(messages: StoredMessage[], goal: string): string 
   const evidence = ordered.filter(message => message.kind === 'step' && message.step).slice(-4).map(message => {
     const step = message.step!;
     const args = step.args as { url?: string } | undefined;
-    return { action: step.tool, ok: step.result.ok, page: browserUrl(args?.url ?? step.url) };
+    return { action: step.tool, ok: step.result.ok, page: browserUrl(args?.url ?? step.url),
+      target: step.targetLabel, error: step.result.ok ? undefined : excerpt(step.result.content, 180) };
   });
 
   return [

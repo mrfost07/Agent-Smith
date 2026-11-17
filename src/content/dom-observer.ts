@@ -7,6 +7,7 @@
 export interface InteractiveElementData {
   index: number;
   tag: string;
+  role?: string;
   type?: string;
   text: string;
   selector: string;
@@ -16,6 +17,8 @@ export interface InteractiveElementData {
   ariaLabel?: string;
   href?: string;
   controlState?: string;
+  dialog?: string;
+  editable?: boolean;
   isVisible: boolean;
   rect: { top: number; left: number; width: number; height: number };
 }
@@ -63,8 +66,14 @@ export class DOMObserver {
     '[role="radio"]',
     '[role="tab"]',
     '[role="menuitem"]',
+    '[role="option"]',
+    '[role="switch"]',
+    '[role="listbox"]',
     '[role="combobox"]',
+    '[role="textbox"]',
+    '[contenteditable=""]',
     '[contenteditable="true"]',
+    '[contenteditable="plaintext-only"]',
     '[tabindex]:not([tabindex="-1"])',
     'canvas',
     'svg',
@@ -95,6 +104,7 @@ export class DOMObserver {
     this.observedElements = [];
     this.observedIdentities = [];
     const interactiveElements: InteractiveElementData[] = [];
+    const dialogs = new Map<Element, string>();
     let counter = 0;
 
     const offscreen: HTMLElement[] = [];
@@ -118,16 +128,28 @@ export class DOMObserver {
       const name = (htmlEl as HTMLInputElement).name || undefined;
       const placeholder = (htmlEl as HTMLInputElement).placeholder || undefined;
       const associatedLabels = (htmlEl as HTMLInputElement).labels;
+      const labelledBy = htmlEl.getAttribute('aria-labelledby')?.trim().split(/\s+/).map(id => {
+        const label = (htmlEl.getRootNode() as Document | ShadowRoot).getElementById(id);
+        return label?.textContent?.trim();
+      }).filter(Boolean).join(' ');
       const ariaLabel = htmlEl.getAttribute('aria-label') ||
+        labelledBy ||
         (associatedLabels && Array.from(associatedLabels, label => this.getElementText(label)).join(' ')) ||
         htmlEl.getAttribute('title') || undefined;
       const href = htmlEl instanceof HTMLAnchorElement ? htmlEl.href : undefined;
-      const controlState = htmlEl.matches(':disabled, [aria-disabled="true"]') ? 'disabled' :
+      const controlState = htmlEl.closest(':disabled, [inert], [aria-disabled="true"]') ? 'disabled' :
         htmlEl instanceof HTMLInputElement && (type === 'checkbox' || type === 'radio') ?
           (htmlEl.checked ? 'checked' : 'unchecked') :
         htmlEl instanceof HTMLSelectElement ?
           Array.from(htmlEl.selectedOptions, option => this.getElementText(option)).join(', ').slice(0, 120) :
+          htmlEl.getAttribute('aria-selected') === 'true' ? 'selected' :
+          htmlEl.getAttribute('aria-checked') === 'true' ? 'checked' :
           htmlEl.getAttribute('aria-expanded') === 'true' ? 'expanded' : undefined;
+      const dialog = htmlEl.closest('dialog, [role="dialog"], [role="alertdialog"]');
+      if (dialog && !dialogs.has(dialog)) {
+        const heading = dialog.querySelector('h1, h2, h3, [role="heading"]');
+        dialogs.set(dialog, (dialog.getAttribute('aria-label') || heading?.textContent?.trim() || 'Dialog').slice(0, 100));
+      }
 
       this.observedElements.push(htmlEl);
       this.observedIdentities.push(this.identity(htmlEl));
@@ -135,6 +157,7 @@ export class DOMObserver {
       interactiveElements.push({
         index: counter,
         tag,
+        role: htmlEl.getAttribute('role') || undefined,
         type,
         text,
         selector: this.generateUniqueSelector(htmlEl),
@@ -143,6 +166,8 @@ export class DOMObserver {
         ariaLabel,
         href,
         controlState,
+        editable: controlState !== 'disabled' && this.acceptsText(htmlEl) || undefined,
+        dialog: dialog ? dialogs.get(dialog) : undefined,
         isVisible: true,
         rect: {
           top: Math.round(rect.top),
@@ -166,6 +191,14 @@ export class DOMObserver {
         height: window.innerHeight || document.documentElement.clientHeight || 800,
       },
     };
+  }
+
+  static acceptsText(element: HTMLElement): boolean {
+    if (element instanceof HTMLTextAreaElement) return !element.readOnly;
+    if (element instanceof HTMLInputElement) {
+      return !element.readOnly && ['text', 'search', 'email', 'tel', 'url', 'number', 'password', 'date', 'time', 'datetime-local', 'month', 'week'].includes(element.type);
+    }
+    return element.isContentEditable && element.matches('[contenteditable]');
   }
 
   private static *interactiveElements(): Generator<HTMLElement> {
