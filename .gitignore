@@ -8,3 +8,5 @@ _metadata/
 *.log
 /resume.txt
 /tailored/
+/public-build/
+/Agent-Smith-extension.zip

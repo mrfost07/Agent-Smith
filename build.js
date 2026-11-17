@@ -7,7 +7,9 @@ const fs = require('fs');
 const path = require('path');
 
 const rootDir = __dirname;
-const distDir = path.join(rootDir, 'dist');
+const publicBuild = process.argv.includes('--public');
+const extensionDir = publicBuild ? path.join(rootDir, 'public-build') : rootDir;
+const distDir = path.join(extensionDir, 'dist');
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -55,9 +57,14 @@ function copyAssets() {
 async function build() {
   console.log('[Build] Building Antigravity Extension...');
   const watch = process.argv.includes('--watch');
+  if (publicBuild && watch) throw new Error('Use the normal build when running watch mode.');
   const esbuild = require('esbuild');
+  // A configured local build includes the OAuth application configuration.
+  // Its users can start Google sign-in without entering an API key or client
+  // credentials in Settings. A clean source build leaves both values empty.
+  // Anyone with the resulting extension bundle can read embedded credentials.
   const localConfigPath = path.join(rootDir, '.smith.local.json');
-  const oauth = fs.existsSync(localConfigPath)
+  const oauth = !publicBuild && fs.existsSync(localConfigPath)
     ? JSON.parse(fs.readFileSync(localConfigPath, 'utf8')).oauth ?? {}
     : {};
   const define = {
@@ -80,12 +87,28 @@ async function build() {
     entryPoints: [path.join(rootDir, 'src/content/content-script.ts')],
     outdir: path.join(distDir, 'content'),
     format: 'iife',
-  }].map(options => ({ ...options, bundle: true, target: 'es2022', sourcemap: true, define }));
+  }].map(options => ({ ...options, bundle: true, target: 'es2022', sourcemap: !publicBuild, define }));
+
+  if (publicBuild) {
+    // Refuse to package stale files from previous builds. Keep the normal dist intact.
+    if (fs.existsSync(extensionDir)) {
+      throw new Error('Move the previous public-build folder out of the project before building a fresh release.');
+    }
+    ensureDir(path.join(extensionDir, 'icons'));
+    ensureDir(path.join(extensionDir, 'assets'));
+    for (const file of ['manifest.json', 'rules.json', 'README.md']) {
+      fs.copyFileSync(path.join(rootDir, file), path.join(extensionDir, file));
+    }
+    for (const file of ['icon16.png', 'icon48.png', 'icon128.png']) {
+      fs.copyFileSync(path.join(rootDir, 'icons', file), path.join(extensionDir, 'icons', file));
+    }
+    fs.copyFileSync(path.join(rootDir, 'assets/architecture.png'), path.join(extensionDir, 'assets/architecture.png'));
+  }
 
   copyAssets();
   if (!watch) {
     await Promise.all(bundles.map(options => esbuild.build(options)));
-    console.log('[Build] Success! Output ready in dist/');
+    console.log('[Build] Success! Output ready in ' + (publicBuild ? 'public-build/' : 'dist/'));
     return;
   }
   const contexts = [];

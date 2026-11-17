@@ -33,6 +33,10 @@ The agent engine uses the request and conversation to choose between a direct an
 
 ## Get started
 
+**Install without building.** Download the extension ZIP from [GitHub Releases](https://github.com/mrfost07/Agent-Smith/releases/latest), extract it, and load the extracted folder containing `manifest.json` as an unpacked extension. The ZIP includes the compiled extension. Choose and connect an AI provider in Settings after installing.
+
+### Build from source
+
 1. Clone this repository and open the project folder.
 2. Run `npm ci`, then `npm run build`. This generates the `dist/` folder used by the extension.
 3. Open `chrome://extensions`, `edge://extensions`, or `brave://extensions` and enable **Developer mode**.
@@ -40,6 +44,17 @@ The agent engine uses the request and conversation to choose between a direct an
 5. Open Agent Smith and choose a provider and model in Settings.
 
 Run `npm test` to check browser planning, providers, sessions, and trading flows with local fixtures.
+
+### Package a public build
+
+```powershell
+npm ci
+npm test
+npm run build:public
+tar.exe -a -c -f Agent-Smith-extension.zip -C public-build .
+```
+
+The public build creates a fresh `public-build/` folder containing the manifest and compiled extension. It skips `.smith.local.json` even when that file is present. Move any previous `public-build/` folder out of the project before building again. On Linux or macOS, you can use `(cd public-build && zip -qr ../Agent-Smith-extension.zip .)` for the last step.
 
 ## Optional local configuration
 
@@ -60,7 +75,7 @@ Create `.smith.local.json` in the project root if you use Google Antigravity OAu
 }
 ```
 
-For Antigravity, use an OAuth client configured for `http://localhost:51121/oauth-callback`, then rebuild. A build made with local OAuth credentials contains those values in its bundles, so keep that build local.
+Antigravity sign-in is experimental. A configured local build embeds its application OAuth client and lets each user start Google authorization directly from Settings. Users do not enter an API key or an OAuth client secret in the extension. The OAuth client must support `http://localhost:51121/oauth-callback`. A build from the public source has no bundled OAuth client. Keep builds containing your OAuth configuration local. Google authorization and Antigravity model access are separate, and Google does not support this consumer OAuth flow for public third-party apps.
 
 To run the optional resume bridge, set `SMITH_BRIDGE_TOKEN` to a randomly generated value of at least 32 characters, run `npm run start:bridge`, and enter the same token in Agent Smith Settings. The bridge uses a sample resume template and supports generating PDFs with a local Chrome installation on Windows.
 
@@ -77,3 +92,5 @@ Run opencode auth login to connect an account in OpenCode. In PowerShell, start 
     opencode serve --hostname 127.0.0.1 --port 4096
 
 Select **OpenCode** in Agent Smith, enter the server password, and load its connected models. Agent Smith checks the tool-disabled planner profile before sending a prompt.
+
+To use a Codex-family model via OpenCode, connect an eligible OpenAI account in OpenCode, then choose a model that appears in Agent Smith's OpenCode catalog. Send a short prompt in Agent Smith to confirm the selected model can answer. Native `codex login` authenticates the Codex CLI separately. Agent Smith's public extension does not offer direct ChatGPT account sign-in.

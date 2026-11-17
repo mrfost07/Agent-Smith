@@ -1344,11 +1344,23 @@ btnCloseSettings.addEventListener('click', () => {
 });
 
 btnRelogin.addEventListener('click', async () => {
+  btnRelogin.disabled = true;
+  btnRelogin.textContent = 'Connecting...';
+  let errorMessage = '';
   try {
-    btnRelogin.textContent = 'Connecting...';
-    await chrome.runtime.sendMessage({ type: 'START_ANTIGRAVITY_LOGIN' });
+    const response = await chrome.runtime.sendMessage({ type: 'START_ANTIGRAVITY_LOGIN' });
+    if (!response?.success) errorMessage = response?.error || 'Could not open Google sign-in.';
+  } catch {
+    errorMessage = 'Could not open Google sign-in.';
   } finally {
-    await checkConnectionStatus();
+    try {
+      await checkConnectionStatus();
+    } finally {
+      btnRelogin.disabled = false;
+      if (errorMessage) {
+        document.getElementById('antigravity-account-status')!.textContent = errorMessage;
+      }
+    }
   }
 });
 

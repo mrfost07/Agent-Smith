@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Download — Agent Smith</title>
-  <meta name="description" content="Build Agent Smith from source and install it in Chrome, Edge, or Brave.">
+  <meta name="description" content="Download Agent Smith and install it in Chrome, Edge, or Brave.">
   <meta name="theme-color" content="#080b13">
   <link rel="canonical" href="https://mrfost07.github.io/Agent-Smith/download/">
   <link rel="icon" type="image/png" href="../assets/smith-icon.png">
@@ -37,20 +37,22 @@
   <main id="main-content" class="container">
     <div class="page-intro">
       <h1>Download</h1>
-      <p>Build Agent Smith from source and install it in Chrome, Edge, or Brave.</p>
+      <p>Download Agent Smith and install it in Chrome, Edge, or Brave.</p>
     </div>
     <article class="prose guide-content">
-      <h2>Get the source</h2>
-      <p>Download and extract the ZIP, or clone the repository. You’ll need Node.js and npm to build the extension.</p>
-      <a class="button primary" href="https://github.com/mrfost07/Agent-Smith/archive/refs/heads/main.zip">Download source ZIP</a>
-      <h2>Build and install</h2>
-      <pre><code>npm ci
-npm run build</code></pre>
-      <ol><li>Open <code>chrome://extensions</code>, <code>edge://extensions</code>, or <code>brave://extensions</code>.</li>
+      <h2>Install the prepared ZIP</h2>
+      <a class="button primary" href="https://github.com/mrfost07/Agent-Smith/releases/latest/download/Agent-Smith-extension.zip">Download extension ZIP</a>
+      <ol><li>Extract the ZIP.</li>
+      <li>Open <code>chrome://extensions</code>, <code>edge://extensions</code>, or <code>brave://extensions</code>.</li>
       <li>Turn on <strong>Developer mode</strong> and choose <strong>Load unpacked</strong>.</li>
       <li>Select the project folder containing <code>manifest.json</code>.</li>
       <li>Open Agent Smith and select a provider and model in Settings.</li></ol>
       <p><a href="../docs/#providers">Set up your AI provider</a></p>
+      <h2>Build from source</h2>
+      <p>Clone the repository and run these commands in the project folder.</p>
+      <pre><code>npm ci
+npm run build</code></pre>
+      <p><a href="https://github.com/mrfost07/Agent-Smith#build-from-source">Developer build and packaging guide</a></p>
     </article>
   </main>
   <footer class="site-footer">

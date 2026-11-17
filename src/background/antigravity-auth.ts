@@ -12,6 +12,8 @@ const ANTIGRAVITY_CLIENT_SECRET = typeof SMITH_OAUTH_CLIENT_SECRET === 'string' 
 export const ANTIGRAVITY_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 export const ANTIGRAVITY_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 export const ANTIGRAVITY_REDIRECT_URI = 'http://localhost:51121/oauth-callback';
+const OAUTH_SESSION_MAX_AGE_MS = 10 * 60_000;
+let exchangingAntigravityCode = false;
 export const ANTIGRAVITY_DEFAULT_PROJECT_ID = 'rising-fact-p41fc';
 export const ANTIGRAVITY_PROD_ENDPOINT = 'https://cloudcode-pa.googleapis.com';
 export const ANTIGRAVITY_DAILY_ENDPOINT = 'https://daily-cloudcode-pa.googleapis.com';
@@ -182,9 +184,11 @@ export async function startLogin(): Promise<{ authUrl: string }> {
 }
 
 export async function handleOAuthCallback(url: string, tabId?: number): Promise<boolean> {
+  if (exchangingAntigravityCode) return false;
+  let ownsExchange = false;
   try {
     const parsedUrl = new URL(url);
-    if (!parsedUrl.pathname.includes('/oauth-callback')) return false;
+    if (parsedUrl.origin + parsedUrl.pathname !== ANTIGRAVITY_REDIRECT_URI) return false;
 
     const code = parsedUrl.searchParams.get('code');
     const state = parsedUrl.searchParams.get('state');
@@ -194,13 +198,17 @@ export async function handleOAuthCallback(url: string, tabId?: number): Promise<
       console.error('[AntigravityAuth] OAuth error reported from Google:', error);
       return false;
     }
-    if (!code) return false;
+    if (!code || !state || !ANTIGRAVITY_CLIENT_ID || !ANTIGRAVITY_CLIENT_SECRET) return false;
 
     const stored = await chrome.storage.local.get(['antigravity_pkce']);
     const pkce = stored.antigravity_pkce;
-    if (!pkce || !pkce.verifier) {
-      console.warn('[AntigravityAuth] No active PKCE session found, attempting token exchange anyway');
-    }
+    const age = Date.now() - pkce?.timestamp;
+    if (!pkce?.verifier || pkce.state !== state ||
+        !Number.isFinite(age) || age < 0 || age > OAUTH_SESSION_MAX_AGE_MS ||
+        exchangingAntigravityCode) return false;
+    exchangingAntigravityCode = true;
+    ownsExchange = true;
+    await chrome.storage.local.remove('antigravity_pkce');
 
     // Exchange authorization code for tokens
     const bodyParams = new URLSearchParams({
@@ -209,10 +217,8 @@ export async function handleOAuthCallback(url: string, tabId?: number): Promise<
       code,
       grant_type: 'authorization_code',
       redirect_uri: ANTIGRAVITY_REDIRECT_URI,
+      code_verifier: pkce.verifier,
     });
-    if (pkce?.verifier) {
-      bodyParams.append('code_verifier', pkce.verifier);
-    }
 
     const tokenRes = await fetch(ANTIGRAVITY_TOKEN_URL, {
       method: 'POST',
@@ -251,7 +257,6 @@ export async function handleOAuthCallback(url: string, tabId?: number): Promise<
       antigravity_project: projectId,
       antigravity_mode: 'token',
     });
-    await chrome.storage.local.remove(['antigravity_pkce']);
 
     // Redirect tab to friendly success page
     if (tabId) {
@@ -272,6 +277,8 @@ export async function handleOAuthCallback(url: string, tabId?: number): Promise<
   } catch (err) {
     console.error('[AntigravityAuth] handleOAuthCallback failed:', err);
     return false;
+  } finally {
+    if (ownsExchange) exchangingAntigravityCode = false;
   }
 }
 

@@ -12,7 +12,7 @@ import {
   cancelOpenCodeSignIn, finishOpenCodeSignIn, getOpenCodeSignIn, listOpenCodeSignInMethods,
   listProviderModels, readProvider, saveProvider, startOpenCodeSignIn,
 } from './model-providers';
-import { startLogin, handleOAuthCallback, signOut } from './antigravity-auth';
+import { ANTIGRAVITY_REDIRECT_URI, startLogin, handleOAuthCallback, signOut } from './antigravity-auth';
 import { SessionManager } from './sessions';
 import {
   getAllSessions,
@@ -98,12 +98,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   const url = changeInfo.url || tab.url;
   if (!url) return;
 
-  if (
-    url.includes('localhost:51121/oauth-callback') ||
-    url.includes('127.0.0.1:51121/oauth-callback')
-  ) {
-    console.log('[ServiceWorker] Detected Antigravity OAuth callback navigation:', url);
-    handleOAuthCallback(url, tabId);
+  if (url.startsWith(ANTIGRAVITY_REDIRECT_URI + '?')) {
+    void handleOAuthCallback(url, tabId);
   }
 });
 
