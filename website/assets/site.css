@@ -1811,10 +1811,33 @@ dialog::backdrop {
   color: rgb(153, 171, 201);
   min-height: 44px;
 }
-.screenshot-tabs button[aria-selected="true"] {
+.screenshot-tabs button[aria-selected="true"],
+.screenshot-tabs button[aria-pressed="true"] {
   background: rgb(32, 48, 76);
   color: rgb(213, 227, 252);
   border-color: rgb(64, 86, 120);
+}
+.demo-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+.demo-toolbar .screenshot-tabs {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+.demo-toolbar .demo-play {
+  min-height: 44px;
+  font-size: 13px;
+}
+.demo-pane img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: inherit;
 }
 .screenshot-tabs .icon {
   width: 16px;
