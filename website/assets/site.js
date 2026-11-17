@@ -76,39 +76,6 @@ document.querySelector('[data-expand-image]')?.addEventListener('click', event =
   showcase.showModal();
 });
 
-const demos = document.querySelector('[data-demo-showcase]');
-if (demos) {
-  const choices = [...demos.querySelectorAll('[data-demo]')];
-  const preview = demos.querySelector('#demo-preview');
-  const play = demos.querySelector('[data-demo-play]');
-  const file = demos.querySelector('[data-demo-file]');
-  let selected = choices.find(choice => choice.getAttribute('aria-pressed') === 'true');
-  let playing = false;
-
-  function showDemo() {
-    const asset = root + 'assets/' + selected.dataset.demo;
-    preview.src = asset + (playing ? '.gif' : '.webp');
-    preview.alt = selected.dataset.alt;
-    file.href = asset + '.gif';
-    play.textContent = playing ? 'Stop GIF' : 'Play GIF';
-  }
-
-  for (const choice of choices) {
-    choice.addEventListener('click', () => {
-      if (choice === selected) return;
-      selected.setAttribute('aria-pressed', 'false');
-      selected = choice;
-      selected.setAttribute('aria-pressed', 'true');
-      playing = false;
-      showDemo();
-    });
-  }
-  play.addEventListener('click', () => {
-    playing = !playing;
-    showDemo();
-  });
-}
-
 for (const dialog of document.querySelectorAll('dialog')) {
   dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
