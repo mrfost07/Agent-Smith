@@ -19,7 +19,7 @@
 
 ## Architecture
 
-![Agent Smith architecture. The browser side panel connects to the service worker and agent engine. The engine uses the selected AI provider, the active browser tab, IndexedDB, and an optional local resume bridge.](assets/architecture.png)
+![Agent Smith architecture. The browser side panel connects to the agent engine through the extension runtime. The engine uses an AI provider, web pages, session storage, and specialized tools.](assets/architecture.png)
 
 The agent engine uses the request and conversation to choose between a direct answer and a browser task. For browser tasks, it reads page text and controls through the content script and can capture a screenshot when vision is enabled. It plans the next action with the selected model, runs the action after any required approval, and reads the page again to check the result.
 

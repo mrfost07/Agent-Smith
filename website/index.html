@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Agent Smith — Your AI assistant inside the browser</title>
-  <meta name="description" content="Browse, research, answer quizzes, and automate website tasks with Agent Smith and your choice of AI model.">
+  <meta name="description" content="Understand pages, research the web, and work across web apps with Agent Smith and your choice of AI model.">
   <meta name="theme-color" content="#080b13">
   <link rel="canonical" href="https://mrfost07.github.io/Agent-Smith/">
   <link rel="icon" type="image/png" href="./assets/smith-icon.png">
@@ -39,7 +39,7 @@
       <div class="hero-top">
         <div class="hero-copy"><h1>Browse with AI.<br>Get things done.</h1></div>
         <div class="hero-description">
-          <p>Read pages, answer questions, and work through website tasks from a side panel in your browser.</p>
+          <p>Understand what’s on screen, research the web, and get work done across web apps from one side panel.</p>
           <div class="hero-actions">
             <a class="button primary" href="./download/">Install Agent Smith</a>
             <a class="button text-button" href="#showcase">See how it works</a>
@@ -58,21 +58,33 @@
     </section>
     <section class="features-section container" id="features" data-search-section>
       <div class="section-intro">
-        <h2>Ask a question.<br>Hand off a task.</h2>
-        <p>Use the context of the page you already have open, or ask Agent Smith to look something up.</p>
+        <h2>What Agent Smith can do.</h2>
+        <p>Describe what you want in plain language and follow the work in your browser.</p>
       </div>
       <div class="feature-text-grid">
         <article>
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
-          <h3>Browse and research.</h3><p>Navigate sites, read the active tab, search the web, and summarize what you find.</p>
+          <h3>Understand what’s on screen.</h3><p>Ask questions about a page, summarize long content, or interpret visuals with a model that supports screenshots.</p>
         </article>
         <article>
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><path d="M6 3h9l4 4v14H6V3Z M14 3v5h5M9 12h7M9 16h5"/></svg>
-          <h3>Answer questions and quizzes.</h3><p>Read prompts and answer choices on the page and ask for an explanation in chat.</p>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+          <h3>Research across the web.</h3><p>Find relevant sources, compare information across pages, and bring the findings back into the conversation.</p>
         </article>
         <article>
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><path d="M3 6h7l2 3h9v12H3V6Z"/></svg>
-          <h3>Automate website tasks.</h3><p>Click controls, fill forms, and work through tasks that take several steps. Review mode lets you approve page input.</p>
+          <h3>Work in web apps.</h3><p>Navigate interfaces, use menus and controls, enter information, and carry out tasks that span several steps.</p>
+        </article>
+        <article>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><path d="M4 19V5m0 14h16M8 15l4-4 3 2 5-6"/></svg>
+          <h3>Follow and steer the work.</h3><p>See what Smith is doing, give it another instruction, or ask it to continue from the current page.</p>
+        </article>
+        <article>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><path d="M12 2 4 5v6c0 5 4 8.5 8 11 4-2.5 8-6 8-11V5l-8-3Z m-4 9 3 3 5-5"/></svg>
+          <h3>Choose how actions run.</h3><p>Use Review to approve page input as Smith works, or Turbo to run the requested actions automatically.</p>
+        </article>
+        <article>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="8" cy="7" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="10" cy="17" r="2" fill="currentColor"/></svg>
+          <h3>Bring your own model.</h3><p>Choose a supported AI provider and model in Settings, with optional screenshot input for models that support vision.</p>
         </article>
       </div>
     </section>
@@ -80,11 +92,11 @@
       <div class="container">
         <div class="section-intro">
           <h2>How the agent works.</h2>
-          <p>The side panel sends your request to the agent engine. The model uses page context to plan actions, and the browser reports the results back to the engine.</p>
+          <p>Smith uses your request and the current page to answer directly or choose a browser action. It checks the result before deciding what to do next.</p>
         </div>
         <div class="screenshot-pane">
           <button type="button" class="screenshot-button" data-expand-image aria-label="Enlarge the Agent Smith architecture diagram">
-            <img src="./assets/architecture.png" alt="How Agent Smith connects the browser side panel, agent engine, AI provider, active tab, and local storage" width="2120" height="748" loading="lazy">
+            <img src="./assets/architecture.png" alt="The browser side panel connects to the agent engine through the extension runtime. The engine uses an AI provider, web pages, session storage, and specialized tools." width="2120" height="748" loading="lazy">
           </button>
         </div>
         <a class="text-link screenshot-guide" href="./docs/#architecture">Explore the architecture →</a>

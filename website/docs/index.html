@@ -48,7 +48,7 @@
       <p>Open <strong>Settings</strong>, select an AI provider, and enter its credentials if required. Choose <strong>Save and load models</strong>, then select a model. To use screenshots, pick a vision-capable model and enable <strong>Send page screenshots to the selected AI model</strong>.</p>
       <p>For local OpenCode setup or Antigravity OAuth, use the <a href="https://github.com/mrfost07/Agent-Smith#ai-providers">provider instructions in the README</a>.</p>
       <h2 id="architecture">Architecture</h2>
-      <img src="../assets/architecture.png" width="2120" height="748" alt="Side panel, service worker, agent engine, AI provider, active tab, and local storage architecture">
+      <img src="../assets/architecture.png" width="2120" height="748" alt="The browser side panel connects to the agent engine through the extension runtime. The engine uses an AI provider, web pages, session storage, and specialized tools.">
       <p>The side panel passes requests to the extension service worker. The engine uses the selected model to plan actions, reads page context through the content script, and uses Chrome DevTools Protocol for pointer and keyboard input. Conversations are stored in IndexedDB.</p>
       <h2 id="page-data">Page data</h2>
       <p>For browser tasks, the selected provider can receive relevant page text and controls along with your request. If screenshots are enabled for a vision-capable model, the active page image can also be sent to that provider.</p>
